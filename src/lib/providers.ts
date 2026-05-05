@@ -1,9 +1,8 @@
 export type ProviderKey =
   | "openai"
-  | "google"
   | "meta"
   | "qwen"
-  | "nvidia";
+  | "groq";
 
 export type ProviderInfo = {
   key: ProviderKey;
@@ -12,17 +11,15 @@ export type ProviderInfo = {
 };
 
 export const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
-  openai: { key: "openai", name: "OpenAI", color: "#10a37f" },
-  google: { key: "google", name: "Google", color: "#4285f4" },
-  meta:   { key: "meta",   name: "Meta",   color: "#0082fb" },
-  qwen:   { key: "qwen",   name: "Qwen",   color: "#6750a4" },
-  nvidia: { key: "nvidia", name: "NVIDIA", color: "#76b900" },
+  openai: { key: "openai", name: "OpenAI",  color: "#10a37f" },
+  meta:   { key: "meta",   name: "Meta",    color: "#0082fb" },
+  qwen:   { key: "qwen",   name: "Qwen",    color: "#6750a4" },
+  groq:   { key: "groq",   name: "Groq",    color: "#f55036" },
 };
 
 export const PROVIDER_ORDER: ProviderKey[] = [
   "openai",
-  "google",
   "meta",
   "qwen",
-  "nvidia",
+  "groq",
 ];

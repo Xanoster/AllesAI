@@ -23,8 +23,8 @@ export type ProviderGroup = {
 
 export const MODEL_CATALOG: ModelInfo[] = [
   {
-    id: "openai/gpt-oss-20b:free",
-    label: "GPT-OSS 20B",
+    id: "openai/gpt-oss-120b",
+    label: "GPT-OSS 120B",
     shortLabel: "GPT-OSS",
     provider: "openai",
     free: true,
@@ -32,38 +32,29 @@ export const MODEL_CATALOG: ModelInfo[] = [
     category: "General",
   },
   {
-    id: "google/gemma-4-31b-it:free",
-    label: "Gemma 4 31B",
-    shortLabel: "Gemma 4",
-    provider: "google",
+    id: "meta-llama/llama-4-scout-17b-16e-instruct",
+    label: "Llama 4 Scout 17B",
+    shortLabel: "Llama 4 Scout",
+    provider: "meta",
     free: true,
-    context: 262144,
+    context: 131072,
     category: "Vision",
     vision: true,
   },
   {
-    id: "meta-llama/llama-3.3-70b-instruct:free",
-    label: "Llama 3.3 70B",
-    shortLabel: "Llama 3.3",
-    provider: "meta",
+    id: "qwen/qwen3-32b",
+    label: "Qwen3 32B",
+    shortLabel: "Qwen3 32B",
+    provider: "qwen",
     free: true,
     context: 131072,
     category: "General",
   },
   {
-    id: "qwen/qwen3-coder:free",
-    label: "Qwen3 Coder",
-    shortLabel: "Qwen3",
-    provider: "qwen",
-    free: true,
-    context: 131072,
-    category: "Coding",
-  },
-  {
-    id: "nvidia/nemotron-3-nano-30b-a3b:free",
-    label: "Nemotron 3 Nano 30B",
-    shortLabel: "Nemotron Nano",
-    provider: "nvidia",
+    id: "groq/compound",
+    label: "Groq Compound",
+    shortLabel: "Compound",
+    provider: "groq",
     free: true,
     context: 131072,
     category: "Agents",
@@ -87,12 +78,13 @@ export function getProviderGroups(): ProviderGroup[] {
   return Array.from(map.values());
 }
 
-// Default selection: 3 diverse free models
+// Default selection: all 4 models
 export const DEFAULT_SELECTED_MODELS = [
-  "openai/gpt-oss-20b:free",
-  "google/gemma-4-31b-it:free",
-  "nvidia/nemotron-3-nano-30b-a3b:free",
+  "openai/gpt-oss-120b",
+  "meta-llama/llama-4-scout-17b-16e-instruct",
+  "qwen/qwen3-32b",
+  "groq/compound",
 ];
 
-// Consensus synthesizer
-export const CONSENSUS_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free";
+// Consensus synthesizer — fastest + tool-capable
+export const CONSENSUS_MODEL = "groq/compound";
