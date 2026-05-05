@@ -46,7 +46,14 @@ function MessageBubble({
           className="mb-2 max-h-48 rounded border border-[var(--border)]"
         />
       )}
-      {msg.error ? (
+      {msg.error === "Stopped" ? (
+        <>
+          {msg.content && <Markdown source={msg.content} />}
+          <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--fg-subtle)]">
+            <Square size={10} fill="currentColor" /> stopped
+          </div>
+        </>
+      ) : msg.error ? (
         <div className="flex items-center gap-2 text-[var(--error)]">
           <AlertCircle size={14} /> {msg.error}
         </div>
@@ -122,16 +129,16 @@ export function ModelColumn({
     >
       <span
         className={
-          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 transition-colors " +
+          "relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full transition-colors " +
           (isDisabled
-            ? "border-[var(--border)] bg-[var(--bg)]"
-            : "border-[var(--accent)] bg-[var(--accent)]")
+            ? "bg-[var(--border-strong)]"
+            : "bg-[var(--accent)]")
         }
       >
         <span
           className={
-            "pointer-events-none inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full bg-white shadow transition-transform " +
-            (isDisabled ? "translate-x-0.5" : "translate-x-[13px]")
+            "pointer-events-none inline-block h-3.5 w-3.5 rounded-full bg-white shadow transition-transform " +
+            (isDisabled ? "translate-x-0.5" : "translate-x-[18px]")
           }
         />
       </span>
@@ -143,8 +150,8 @@ export function ModelColumn({
     return (
       <div
         className={
-          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden rounded-xl border bg-[var(--bg-elevated)] py-2 opacity-50 transition " +
-          (isFocused ? "border-[var(--accent)]" : "border-[var(--border)]")
+          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden bg-[var(--bg-soft)] py-2 opacity-50 transition border-t-2 " +
+          (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent")
         }
       >
         {TogglePill}
@@ -161,27 +168,22 @@ export function ModelColumn({
   return (
     <div
       className={
-        "flex h-full min-w-[320px] flex-1 flex-col overflow-hidden rounded-xl border bg-[var(--bg-elevated)] transition " +
-        (isFocused
-          ? "border-[var(--accent)] shadow-lg shadow-[var(--accent)]/10"
-          : isDisabled
-          ? "border-[var(--border)] opacity-60"
-          : "border-[var(--border)]") +
-        (isOtherFocused ? " opacity-50" : "")
+        "flex h-full min-w-[320px] flex-1 flex-col overflow-hidden transition border-t-2 " +
+        (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent") +
+        (isOtherFocused ? " opacity-40" : "")
       }
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          {info && <ProviderIcon provider={info.provider} size={26} />}
+      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {info && <ProviderIcon provider={info.provider} size={28} />}
           <div className="min-w-0">
-            <div className="truncate text-xs font-medium text-[var(--fg)]">
+            <div className="truncate text-sm font-medium text-[var(--fg)]">
               {info?.label ?? modelId}
             </div>
-            <div className="truncate text-[10px] text-[var(--fg-muted)]">
+            <div className="truncate text-[11px] text-[var(--fg-muted)]">
               {providerName}
               {info?.free ? " · free" : ""}
-              {isDisabled ? " · paused" : ""}
               {totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : ""}
             </div>
           </div>
@@ -192,21 +194,21 @@ export function ModelColumn({
           {isPending && (
             <button
               onClick={stopStream}
-              className="rounded p-1 text-[var(--error)] hover:bg-[var(--bg)]"
+              className="rounded p-1.5 text-[var(--error)] hover:bg-[var(--bg)]"
               title="Stop response"
             >
-              <Square size={12} fill="currentColor" />
+              <Square size={13} fill="currentColor" />
             </button>
           )}
           <button
             onClick={toggleFocus}
             className={
-              "rounded p-1 hover:bg-[var(--bg)] hover:text-[var(--fg)] " +
+              "rounded p-1.5 hover:bg-[var(--bg)] hover:text-[var(--fg)] " +
               (isFocused ? "text-[var(--accent)]" : "")
             }
             title={isFocused ? "Exit focus mode" : "Focus on this model only"}
           >
-            <Focus size={13} />
+            <Focus size={14} />
           </button>
         </div>
       </div>

@@ -45,24 +45,24 @@ export default function Home() {
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
-        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-4 py-2">
+        <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2 md:hidden">
             <div className="rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 p-1 text-white">
               <Sparkles size={12} />
             </div>
             <span className="text-sm font-semibold">Alles AI</span>
           </div>
-          <div className="hidden min-w-0 md:block">
-            <h1 className="truncate text-sm font-semibold text-[var(--fg)]">
+          <div className="hidden min-w-0 items-baseline gap-2 md:flex">
+            <h1 className="truncate text-base font-semibold text-[var(--fg)]">
               {conv?.title ?? "Alles AI"}
             </h1>
-            <p className="truncate text-[11px] text-[var(--fg-muted)]">
+            <span className="truncate text-xs text-[var(--fg-muted)]">
               {conv
                 ? conv.focusedModel
-                  ? "Focused on 1 model"
-                  : `${conv.selectedModels.length} model${conv.selectedModels.length === 1 ? "" : "s"} side-by-side`
-                : "Multi-model chat"}
-            </p>
+                  ? "· Focused on 1 model"
+                  : `· ${conv.selectedModels.length} model${conv.selectedModels.length === 1 ? "" : "s"}`
+                : ""}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {conv && <ModelPicker convId={conv.id} />}
@@ -93,7 +93,7 @@ export default function Home() {
 
         {conv && conv.selectedModels.length > 0 && hasMessages && (
           <>
-            <div className="flex flex-1 gap-3 overflow-x-auto p-3">
+            <div className="flex min-h-0 flex-1 divide-x divide-[var(--border)] overflow-x-auto">
               {(conv.focusedModel
                 ? [conv.focusedModel]
                 : conv.selectedModels

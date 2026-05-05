@@ -12,9 +12,9 @@ export function SettingsDialog() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] hover:border-[var(--border-strong)]"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] px-3 py-1.5 text-sm font-medium text-[var(--fg)] transition hover:border-[var(--border-strong)]"
       >
-        <SettingsIcon size={12} /> Settings
+        <SettingsIcon size={14} /> Settings
       </button>
 
       {open && (
