@@ -16,6 +16,7 @@ export const metadata: Metadata = {
   title: "Alles AI · Compare LLMs side-by-side",
   description:
     "Alles AI: Send one prompt to multiple AI models (GPT-4o, Claude, Gemini, Llama, DeepSeek, etc.) and compare responses side-by-side. BYOK via OpenRouter.",
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
