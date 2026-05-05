@@ -1,6 +1,6 @@
 "use client";
 
-import { useChat, useSettings, type Message } from "./store";
+import { useChat, useSettings, type Message, normalizeModelId } from "./store";
 import { getModel } from "./models";
 
 // Per-model abort controllers for mid-stream stopping
@@ -77,16 +77,18 @@ export async function streamModel(opts: {
 
   const msgId = chatState.startAssistant(convId, modelId);
 
+  // Normalize model ID in case persisted data still has a stale alias
+  const resolvedModelId = normalizeModelId(modelId) ?? modelId;
+
   try {
     const res = await fetch("/api/chat", {
       method: "POST",
       signal: abortSignal,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: modelId,
+        model: resolvedModelId,
         messages: toApiMessages(history, settings.systemPrompt),
         apiKey: settings.apiKey || undefined,
-        temperature: settings.temperature,
 
       }),
     });

@@ -124,7 +124,7 @@ function findLegacyModelIds(modelId: string): string[] {
     .map(([legacyId]) => legacyId);
 }
 
-function normalizeModelId(modelId: string): string | null {
+export function normalizeModelId(modelId: string): string | null {
   const normalized = MODEL_ID_ALIASES[modelId] ?? modelId;
   return VALID_MODEL_IDS.has(normalized) ? normalized : null;
 }
@@ -404,6 +404,27 @@ export const useChat = create<ChatState>()(
               ? state.activeId
               : Object.keys(conversations)[0] ?? null,
         } as ChatState;
+      },
+      onRehydrateStorage: () => (state) => {
+        if (!state) return;
+        // Always sanitize on load — don't rely solely on version-based migration
+        const sanitizedConvs = Object.fromEntries(
+          Object.entries(state.conversations).map(([id, conv]) => [
+            id,
+            sanitizeConversation(conv),
+          ])
+        );
+        const sanitizedLast = Array.from(
+          new Set(
+            state.lastUsedModels
+              .map(normalizeModelId)
+              .filter((id): id is string => Boolean(id))
+          )
+        );
+        useChat.setState({
+          conversations: sanitizedConvs,
+          lastUsedModels: sanitizedLast.length > 0 ? sanitizedLast : DEFAULT_SELECTED_MODELS,
+        });
       },
     }
   )
