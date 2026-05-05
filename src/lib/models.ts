@@ -138,41 +138,15 @@ export const PRESET_CLOUD_OLLAMA_MODELS: CloudOllamaPreset[] = [
     thinking: true,
   },
   {
-    name: "gemini-3-flash-preview",
-    label: "Gemini 3 Flash Preview",
-    shortLabel: "Gemini 3 Flash",
-    provider: "gemini",
-    familyId: "gemini-3-flash-preview",
-    paramSize: "Preview",
-    bestFor: "Fast frontier Q&A",
-    context: 1048576,
-    category: "General",
-    vision: true,
-    thinking: true,
-  },
-  {
-    name: "deepseek-v4-pro",
-    label: "DeepSeek V4 Pro",
-    shortLabel: "DeepSeek V4",
-    provider: "deepseek",
-    familyId: "deepseek-v4-pro",
-    paramSize: "Pro",
-    bestFor: "Strong reasoning",
-    context: 1048576,
-    category: "Reasoning",
-    thinking: true,
-  },
-  {
-    name: "qwen3.5:397b",
-    label: "Qwen3.5 397B",
-    shortLabel: "Qwen3.5",
-    provider: "qwen",
-    familyId: "qwen3-5-397b",
-    paramSize: "397B",
-    bestFor: "Multimodal reasoning",
+    name: "cogito-2.1:671b",
+    label: "Cogito 2.1 671B",
+    shortLabel: "Cogito 2.1",
+    provider: "cogito",
+    familyId: "cogito-2-1-671b",
+    paramSize: "671B",
+    bestFor: "Careful reasoning",
     context: 256000,
-    category: "General",
-    vision: true,
+    category: "Reasoning",
     thinking: true,
   },
   {
@@ -186,6 +160,30 @@ export const PRESET_CLOUD_OLLAMA_MODELS: CloudOllamaPreset[] = [
     context: 256000,
     category: "Reasoning",
     vision: true,
+    thinking: true,
+  },
+  {
+    name: "mistral-large-3:675b",
+    label: "Mistral Large 3 675B",
+    shortLabel: "Mistral Large",
+    provider: "mistral",
+    familyId: "mistral-large-3-675b",
+    paramSize: "675B",
+    bestFor: "General Q&A, reasoning",
+    context: 256000,
+    category: "General",
+    thinking: true,
+  },
+  {
+    name: "nemotron-3-super",
+    label: "Nemotron 3 Super",
+    shortLabel: "Nemotron 3",
+    provider: "nvidia",
+    familyId: "nemotron-3-super",
+    paramSize: "Super",
+    bestFor: "Fast reasoning",
+    context: 256000,
+    category: "Reasoning",
     thinking: true,
   },
 ];
@@ -473,6 +471,50 @@ function inferOllamaModel(modelName: string): Omit<ModelInfo, "id" | "apiProvide
       thinking: true,
       bestFor: "Reasoning",
       paramSize: size ?? "Varies",
+    };
+  }
+
+  if (lower.startsWith("cogito")) {
+    const paramSize = size ?? "Unknown";
+    return {
+      label: `Cogito ${cleanName.replace(/^cogito-?/i, "").replace(/:/g, " ").trim() || paramSize}`,
+      shortLabel: "Cogito",
+      provider: "cogito",
+      familyId: normalizeFamilyId(cleanName),
+      context: 256000,
+      category: "Reasoning",
+      thinking: true,
+      bestFor: "Careful reasoning",
+      paramSize,
+    };
+  }
+
+  if (lower.startsWith("mistral-large")) {
+    const paramSize = size ?? "Unknown";
+    return {
+      label: `Mistral Large ${paramSize}`,
+      shortLabel: "Mistral Large",
+      provider: "mistral",
+      familyId: normalizeFamilyId(cleanName),
+      context: 256000,
+      category: "General",
+      thinking: true,
+      bestFor: "General Q&A, reasoning",
+      paramSize,
+    };
+  }
+
+  if (lower.startsWith("nemotron")) {
+    return {
+      label: humanizeModelName(cleanName),
+      shortLabel: "Nemotron",
+      provider: "nvidia",
+      familyId: normalizeFamilyId(cleanName),
+      context: 256000,
+      category: "Reasoning",
+      thinking: true,
+      bestFor: "Fast reasoning",
+      paramSize: size ?? "Super",
     };
   }
 

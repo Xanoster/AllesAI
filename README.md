@@ -14,7 +14,7 @@
 | Llama 4 Scout 17B | Groq | Local Ollama if installed | 128K | Vision |
 | Qwen3 32B | Groq | Local Ollama if installed | 128K | General |
 | Gemini 2.5 Flash Lite | Google Gemini API | - | 1M | Vision |
-| Gemini 3 Flash Preview, DeepSeek V4 Pro, Qwen3.5 397B, Gemma 4 31B | Ollama | Local Ollama if installed | varies | Optional hosted Q&A/reasoning models |
+| Cogito 2.1 671B, Gemma 4 31B, Mistral Large 3 675B, Nemotron 3 Super | Ollama | Local Ollama if installed | varies | Optional hosted Q&A/reasoning models |
 
 All models are **free**. Groq models require a [Groq API key](https://console.groq.com). Gemini requires a [Google AI Studio key](https://aistudio.google.com/api-keys).
 Optional hosted Ollama models require an Ollama API key. Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.

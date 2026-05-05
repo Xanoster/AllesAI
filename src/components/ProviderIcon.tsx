@@ -33,8 +33,11 @@ const API_PATHS: Partial<Record<ApiProviderKey, string>> = {};
 // Letter fallback for brands without a SimpleIcons path
 const LETTERS: Record<ProviderKey, string> = {
   openai:   "O",
+  cogito:   "C",
   deepseek: "D",
   meta:     "M",
+  mistral:  "M",
+  nvidia:   "N",
   qwen:     "Q",
   gemini:   "G",
   zhipu:    "Z",
