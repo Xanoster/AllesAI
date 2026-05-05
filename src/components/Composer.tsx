@@ -33,7 +33,7 @@ export function Composer({ convId }: { convId: string }) {
   };
 
   return (
-    <form onSubmit={onSubmit} className="px-4 pb-4 pt-2">
+    <form onSubmit={onSubmit} className="border-t border-[var(--border)] bg-[var(--bg-soft)] px-4 pb-4 pt-3">
       {focusedModel && (
         <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] text-[var(--accent)]">
           <span className="font-medium">Focused on {focusedInfo?.label ?? focusedModel}</span>
