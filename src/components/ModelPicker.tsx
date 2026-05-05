@@ -39,20 +39,6 @@ export function ModelPicker({ convId }: { convId: string }) {
     setSelectedModels(convId, next);
   };
 
-  const togglePaid = (modelId: string) => {
-    if (selected.has(modelId)) {
-      setSelectedModels(
-        convId,
-        conv.selectedModels.filter((m) => m !== modelId)
-      );
-    } else {
-      const m = getModel(modelId);
-      if (!m) return;
-      // Replace any existing model from same provider
-      setProviderActive(m.provider, modelId);
-    }
-  };
-
   return (
     <>
       <button
@@ -99,7 +85,6 @@ export function ModelPicker({ convId }: { convId: string }) {
                   ...g.paidModels,
                 ];
                 const activeId = activeByProvider.get(g.provider);
-                const activeModel = activeId ? getModel(activeId) : undefined;
                 const enabled = !!activeId;
                 const provInfo = PROVIDERS[g.provider];
                 return (

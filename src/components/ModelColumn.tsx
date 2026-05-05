@@ -47,8 +47,6 @@ function MessageBubble({
   msg,
 }: {
   msg: Message;
-  convId: string;
-  modelId: string;
 }) {
   const isUser = msg.role === "user";
   const [copied, setCopied] = useState(false);
@@ -150,11 +148,6 @@ export function ModelColumn({
 
   const isDisabled = (conv.disabledModels ?? []).includes(modelId);
   const isPending = thread.messages.some((m) => m.role === "assistant" && m.pending);
-
-  const totalCost = thread.messages.reduce(
-    (acc, m) => acc + (m.usage?.costUsd ?? 0),
-    0
-  );
 
   const isFocused = conv.focusedModel === modelId;
   const isOtherFocused = !!conv.focusedModel && !isFocused;
@@ -335,7 +328,6 @@ export function ModelColumn({
             <div className="truncate text-[11px] text-[var(--fg-muted)]">
               {providerName}
               {info?.free ? " · free" : ""}
-              {totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : ""}
             </div>
           </div>
         </div>
@@ -372,7 +364,7 @@ export function ModelColumn({
           </div>
         )}
         {thread.messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} convId={convId} modelId={modelId} />
+          <MessageBubble key={m.id} msg={m} />
         ))}
         {/* Dynamic spacer: only as tall as needed so latest user msg can reach top.
             Shrinks as assistant response grows; disappears once content fills view. */}

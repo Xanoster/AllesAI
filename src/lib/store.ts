@@ -18,7 +18,6 @@ export type Message = {
   pending?: boolean;
   error?: string;
   usage?: { promptTokens?: number; completionTokens?: number; costUsd?: number };
-  favorite?: boolean;
 };
 
 // Per-model thread of messages. The user prompt is mirrored across all columns.
@@ -93,7 +92,6 @@ type ChatState = {
     patch?: Partial<Message>
   ) => void;
   failAssistant: (convId: string, modelId: string, msgId: string, error: string) => void;
-  toggleFavorite: (convId: string, modelId: string, msgId: string) => void;
 };
 
 function emptyConversation(selectedModels: string[]): Conversation {
@@ -366,22 +364,6 @@ export const useChat = create<ChatState>()(
         }),
       failAssistant: (convId, modelId, msgId, error) =>
         get().finishAssistant(convId, modelId, msgId, { error, pending: false }),
-      toggleFavorite: (convId, modelId, msgId) =>
-        set((s) => {
-          const c = s.conversations[convId];
-          if (!c) return s;
-          const t = c.threads[modelId];
-          if (!t) return s;
-          const messages = t.messages.map((m) =>
-            m.id === msgId ? { ...m, favorite: !m.favorite } : m
-          );
-          return {
-            conversations: {
-              ...s.conversations,
-              [convId]: { ...c, threads: { ...c.threads, [modelId]: { ...t, messages } } },
-            },
-          };
-        }),
     }),
     {
       name: "alles-ai-chats",

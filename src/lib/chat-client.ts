@@ -42,14 +42,6 @@ function toApiMessages(history: Message[], systemPrompt: string): ChatRequestMes
   return out;
 }
 
-function estimateCostUsd(
-  _modelId: string,
-  _usage: { prompt_tokens?: number; completion_tokens?: number }
-): number | undefined {
-  // All models are free — no cost estimation needed
-  return undefined;
-}
-
 export async function streamModel(opts: {
   convId: string;
   modelId: string;
@@ -136,7 +128,7 @@ export async function streamModel(opts: {
             usage = {
               promptTokens: u.prompt_tokens,
               completionTokens: u.completion_tokens,
-              costUsd: typeof u.cost === "number" ? u.cost : estimateCostUsd(modelId, u),
+              costUsd: typeof u.cost === "number" ? u.cost : undefined,
             };
           } else if (evt.type === "error") {
             useChat.getState().failAssistant(convId, modelId, msgId, evt.message);
