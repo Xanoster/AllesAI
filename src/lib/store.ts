@@ -47,10 +47,7 @@ type SettingsState = {
   setSystemPrompt: (s: string) => void;
   temperature: number;
   setTemperature: (t: number) => void;
-  useOllama: boolean;
-  setUseOllama: (v: boolean) => void;
-  ollamaBaseUrl: string;
-  setOllamaBaseUrl: (u: string) => void;
+
   theme: Theme;
   setTheme: (t: Theme) => void;
   toggleTheme: () => void;
@@ -65,10 +62,7 @@ export const useSettings = create<SettingsState>()(
       setSystemPrompt: (s) => set({ systemPrompt: s }),
       temperature: 0.7,
       setTemperature: (t) => set({ temperature: t }),
-      useOllama: false,
-      setUseOllama: (v) => set({ useOllama: v }),
-      ollamaBaseUrl: "http://localhost:11434/v1",
-      setOllamaBaseUrl: (u) => set({ ollamaBaseUrl: u }),
+
       theme: "dark",
       setTheme: (t) => set({ theme: t }),
       toggleTheme: () => set({ theme: get().theme === "dark" ? "light" : "dark" }),

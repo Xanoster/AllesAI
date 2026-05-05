@@ -17,9 +17,7 @@ type RequestBody = {
   messages: ChatMessage[];
   apiKey?: string; // BYOK from client
   temperature?: number;
-  // local Ollama support
-  useOllama?: boolean;
-  ollamaBaseUrl?: string;
+
 };
 
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -32,37 +30,29 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const { model, messages, apiKey, temperature = 0.7, useOllama, ollamaBaseUrl } = body;
+  const { model, messages, apiKey, temperature = 0.7 } = body;
 
   if (!model || !Array.isArray(messages) || messages.length === 0) {
     return new Response("Missing model or messages", { status: 400 });
   }
 
-  const isOllama = !!useOllama;
-  const url = isOllama
-    ? `${(ollamaBaseUrl ?? "http://localhost:11434/v1").replace(/\/$/, "")}/chat/completions`
-    : OPENROUTER_URL;
-
-  const key = apiKey || (isOllama ? "ollama" : process.env.OPENROUTER_API_KEY);
-  if (!key && !isOllama) {
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  if (!key) {
     return new Response(
       "No API key. Add your OpenRouter key in Settings (BYOK).",
       { status: 401 }
     );
   }
 
+  const origin = req.headers.get("origin") ?? "http://localhost:3000";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${key ?? "ollama"}`,
+    Authorization: `Bearer ${key}`,
+    "HTTP-Referer": origin,
+    "X-Title": "Alles AI",
   };
-  if (!isOllama) {
-    // Optional but recommended by OpenRouter for app attribution.
-    const origin = req.headers.get("origin") ?? "http://localhost:3000";
-    headers["HTTP-Referer"] = origin;
-    headers["X-Title"] = "Alles AI";
-  }
 
-  const upstream = await fetch(url, {
+  const upstream = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -70,8 +60,7 @@ export async function POST(req: NextRequest) {
       messages,
       temperature,
       stream: true,
-      // Include token usage in the final streaming chunk (OpenAI-compatible)
-      ...(isOllama ? {} : { stream_options: { include_usage: true } }),
+      stream_options: { include_usage: true },
     }),
   }).catch((err: unknown) => {
     return new Response(

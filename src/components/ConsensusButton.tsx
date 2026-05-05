@@ -9,8 +9,6 @@ import { Markdown } from "./Markdown";
 export function ConsensusButton({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const apiKey = useSettings((s) => s.apiKey);
-  const useOllama = useSettings((s) => s.useOllama);
-  const ollamaBaseUrl = useSettings((s) => s.ollamaBaseUrl);
 
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -56,8 +54,6 @@ export function ConsensusButton({ convId }: { convId: string }) {
           responses,
           consensusModel: CONSENSUS_MODEL,
           apiKey,
-          useOllama,
-          ollamaBaseUrl,
         }),
       });
       if (!res.ok || !res.body) {

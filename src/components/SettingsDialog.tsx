@@ -91,44 +91,6 @@ export function SettingsDialog() {
                 />
               </div>
 
-              {/* Ollama */}
-              <div className="rounded border border-[var(--border)] bg-[var(--bg-soft)] p-3">
-                <label className="flex items-center gap-2 text-xs cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={s.useOllama}
-                    onChange={(e) => s.setUseOllama(e.target.checked)}
-                    className="accent-[var(--accent)]"
-                  />
-                  <span className="font-medium text-[var(--fg)]">
-                    Use local Ollama instead of OpenRouter
-                  </span>
-                </label>
-                <p className="mt-1 text-[11px] text-[var(--fg-muted)]">
-                  Run models locally via{" "}
-                  <a
-                    href="https://ollama.com"
-                    className="text-[var(--accent)] hover:underline"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Ollama
-                  </a>
-                  . Use the model id shown by{" "}
-                  <code className="rounded bg-[var(--code-bg)] px-1 text-[var(--code-fg)]">
-                    ollama list
-                  </code>
-                  .
-                </p>
-                {s.useOllama && (
-                  <input
-                    value={s.ollamaBaseUrl}
-                    onChange={(e) => s.setOllamaBaseUrl(e.target.value)}
-                    placeholder="http://localhost:11434/v1"
-                    className="mt-2 w-full rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1.5 text-[var(--fg)] outline-none focus:border-[var(--border-strong)] placeholder:text-[var(--fg-subtle)]"
-                  />
-                )}
-              </div>
             </div>
           </div>
         </div>

@@ -11,8 +11,7 @@ type RequestBody = {
   responses: ResponseEntry[];
   consensusModel: string;
   apiKey?: string;
-  useOllama?: boolean;
-  ollamaBaseUrl?: string;
+
 };
 
 const SYSTEM_PROMPT = `You are an expert synthesizer. You will be given a user's question and several answers from different AI models.
@@ -34,18 +33,13 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const { prompt, responses, consensusModel, apiKey, useOllama, ollamaBaseUrl } = body;
+  const { prompt, responses, consensusModel, apiKey } = body;
   if (!prompt || !Array.isArray(responses) || responses.length === 0 || !consensusModel) {
     return new Response("Missing prompt, responses, or consensusModel", { status: 400 });
   }
 
-  const isOllama = !!useOllama;
-  const url = isOllama
-    ? `${(ollamaBaseUrl ?? "http://localhost:11434/v1").replace(/\/$/, "")}/chat/completions`
-    : OPENROUTER_URL;
-
-  const key = apiKey || (isOllama ? "ollama" : process.env.OPENROUTER_API_KEY);
-  if (!key && !isOllama) {
+  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  if (!key) {
     return new Response("No API key. Add your OpenRouter key in Settings.", { status: 401 });
   }
 
@@ -58,17 +52,15 @@ export async function POST(req: NextRequest) {
     ),
   ].join("\n");
 
+  const origin = req.headers.get("origin") ?? "http://localhost:3000";
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
-    Authorization: `Bearer ${key ?? "ollama"}`,
+    Authorization: `Bearer ${key}`,
+    "HTTP-Referer": origin,
+    "X-Title": "Alles AI",
   };
-  if (!isOllama) {
-    const origin = req.headers.get("origin") ?? "http://localhost:3000";
-    headers["HTTP-Referer"] = origin;
-    headers["X-Title"] = "Alles AI";
-  }
 
-  const upstream = await fetch(url, {
+  const upstream = await fetch(OPENROUTER_URL, {
     method: "POST",
     headers,
     body: JSON.stringify({
@@ -79,7 +71,7 @@ export async function POST(req: NextRequest) {
         { role: "system", content: SYSTEM_PROMPT },
         { role: "user", content: userBlock },
       ],
-      ...(isOllama ? {} : { stream_options: { include_usage: true } }),
+      stream_options: { include_usage: true },
     }),
   }).catch((err: unknown) => {
     return new Response(

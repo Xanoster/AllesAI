@@ -19,7 +19,6 @@ export default function Home() {
   const activeId = useChat((s) => s.activeId);
   const newConversation = useChat((s) => s.newConversation);
   const apiKey = useSettings((s) => s.apiKey);
-  const useOllama = useSettings((s) => s.useOllama);
 
   // Auto-create a conversation if none exists.
   useEffect(() => {
@@ -32,7 +31,7 @@ export default function Home() {
   if (!mounted) return null;
 
   const conv = activeId ? conversations[activeId] : null;
-  const needsKey = !useOllama && !apiKey;
+  const needsKey = !apiKey;
 
   // Determine if the conversation has any messages yet — if not, show the hero
   const hasMessages = !!conv && conv.selectedModels.some(

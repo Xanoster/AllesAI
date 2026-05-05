@@ -87,8 +87,7 @@ export async function streamModel(opts: {
         messages: toApiMessages(history, settings.systemPrompt),
         apiKey: settings.apiKey || undefined,
         temperature: settings.temperature,
-        useOllama: settings.useOllama,
-        ollamaBaseUrl: settings.ollamaBaseUrl,
+
       }),
     });
 
