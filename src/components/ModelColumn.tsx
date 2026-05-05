@@ -1,39 +1,40 @@
 "use client";
 
+import { useState } from "react";
 import { useChat, type Message } from "@/lib/store";
 import { getModel } from "@/lib/models";
 import { PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
-import { Copy, AlertCircle, Loader2, Focus, Square } from "lucide-react";
-import { useState } from "react";
+import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical } from "lucide-react";
 import { abortModel } from "@/lib/chat-client";
 
 function MessageBubble({
   msg,
-  convId,
-  modelId,
 }: {
   msg: Message;
   convId: string;
   modelId: string;
 }) {
-  const [copied, setCopied] = useState(false);
   const isUser = msg.role === "user";
+  const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
     try {
-      await navigator.clipboard.writeText(msg.content);
+      await navigator.clipboard.writeText(msg.content || "");
       setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
+      setTimeout(() => setCopied(false), 1500);
     } catch {
-      /* ignore */
+      /* clipboard unavailable */
     }
   };
 
+  const showCopy =
+    !isUser && !msg.pending && !msg.error && !!msg.content;
+
   return (
     <div
-      className="rounded-lg border px-3 py-2 text-sm"
+      className="group relative rounded-lg border px-3 py-2 text-sm"
       style={{
         background: isUser ? "var(--user-bubble)" : "var(--asst-bubble)",
         borderColor: isUser ? "var(--user-border)" : "var(--asst-border)",
@@ -64,17 +65,14 @@ function MessageBubble({
       ) : (
         <Markdown source={msg.content || ""} />
       )}
-
-      {!isUser && !msg.pending && (
-        <div className="mt-2 flex items-center gap-3 text-[11px] text-[var(--fg-muted)]">
-          <button
-            onClick={onCopy}
-            className="inline-flex items-center gap-1 hover:text-[var(--fg)]"
-            title="Copy"
-          >
-            <Copy size={11} /> {copied ? "copied" : "copy"}
-          </button>
-        </div>
+      {showCopy && (
+        <button
+          onClick={onCopy}
+          title={copied ? "Copied" : "Copy response"}
+          className="absolute right-1.5 top-1.5 rounded p-1 text-[var(--fg-muted)] opacity-0 transition hover:bg-[var(--bg-soft)] hover:text-[var(--fg)] group-hover:opacity-100"
+        >
+          {copied ? <Check size={13} /> : <Copy size={13} />}
+        </button>
       )}
     </div>
   );
@@ -83,9 +81,17 @@ function MessageBubble({
 export function ModelColumn({
   convId,
   modelId,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  isDragOver,
 }: {
   convId: string;
   modelId: string;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  isDragOver?: boolean;
 }) {
   const conv = useChat((s) => s.conversations[convId]);
   const setFocusedModel = useChat((s) => s.setFocusedModel);
@@ -149,9 +155,14 @@ export function ModelColumn({
   if (isDisabled) {
     return (
       <div
+        draggable
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
         className={
-          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden bg-[var(--bg-soft)] py-2 opacity-50 transition border-t-2 " +
-          (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent")
+          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden bg-[var(--bg-soft)] py-2 opacity-50 transition border-t-2 cursor-grab active:cursor-grabbing " +
+          (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent") +
+          (isDragOver ? " ring-2 ring-inset ring-[var(--accent)]" : "")
         }
       >
         {TogglePill}
@@ -167,15 +178,26 @@ export function ModelColumn({
   }
   return (
     <div
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       className={
         "flex h-full min-w-[320px] flex-1 flex-col overflow-hidden transition border-t-2 " +
         (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent") +
-        (isOtherFocused ? " opacity-40" : "")
+        (isOtherFocused ? " opacity-40" : "") +
+        (isDragOver ? " ring-2 ring-inset ring-[var(--accent)]" : "")
       }
     >
       {/* Header */}
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="cursor-grab active:cursor-grabbing text-[var(--fg-subtle)] hover:text-[var(--fg-muted)] shrink-0"
+            title="Drag to reorder"
+          >
+            <GripVertical size={14} />
+          </span>
           {info && <ProviderIcon provider={info.provider} size={28} />}
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-[var(--fg)]">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useChat, useSettings } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { ModelColumn } from "@/components/ModelColumn";
@@ -15,10 +15,36 @@ export default function Home() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const setSelectedModels = useChat((s) => s.setSelectedModels);
+  const dragSrc = useRef<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
   const conversations = useChat((s) => s.conversations);
   const activeId = useChat((s) => s.activeId);
   const newConversation = useChat((s) => s.newConversation);
   const apiKey = useSettings((s) => s.apiKey);
+
+  const handleDragStart = (id: string) => {
+    dragSrc.current = id;
+  };
+
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (dragSrc.current && dragSrc.current !== id) setDragOverId(id);
+  };
+
+  const handleDrop = (targetId: string) => {
+    const src = dragSrc.current;
+    dragSrc.current = null;
+    setDragOverId(null);
+    if (!src || src === targetId || !conv) return;
+    const order = [...conv.selectedModels];
+    const from = order.indexOf(src);
+    const to = order.indexOf(targetId);
+    if (from === -1 || to === -1) return;
+    order.splice(from, 1);
+    order.splice(to, 0, src);
+    setSelectedModels(conv.id, order);
+  };
 
   // Auto-create a conversation if none exists.
   useEffect(() => {
@@ -97,7 +123,15 @@ export default function Home() {
                 ? [conv.focusedModel]
                 : conv.selectedModels
               ).map((id) => (
-                <ModelColumn key={id} convId={conv.id} modelId={id} />
+                <ModelColumn
+                  key={id}
+                  convId={conv.id}
+                  modelId={id}
+                  onDragStart={() => handleDragStart(id)}
+                  onDragOver={(e) => handleDragOver(e, id)}
+                  onDrop={() => handleDrop(id)}
+                  isDragOver={dragOverId === id}
+                />
               ))}
               {/* When focused, show ghost preview of others as small read-only column? Skip for now. */}
             </div>

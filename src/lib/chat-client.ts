@@ -104,7 +104,8 @@ export async function streamModel(opts: {
       } catch { /* keep raw text */ }
       if (res.status === 429) errorMsg = "Rate limited — wait a moment and try again.";
       if (res.status === 401) errorMsg = "Invalid or missing API key. Check Settings.";
-      if (res.status === 404) errorMsg = `Model not found: "${modelId}". Try a different model.`;
+      // Show the actual upstream error for 404 — helps diagnose model availability
+      if (res.status === 404 && !errorMsg.includes(resolvedModelId)) errorMsg = `Model "${resolvedModelId}" not found. ${errorMsg}`;
       useChat.getState().failAssistant(convId, modelId, msgId, errorMsg);
       return;
     }

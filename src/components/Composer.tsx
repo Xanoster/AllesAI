@@ -12,11 +12,13 @@ export function Composer({ convId }: { convId: string }) {
   const [text, setText] = useState("");
   const ctrlRef = useRef<AbortController | null>(null);
 
-  const anyPending = !!conv?.selectedModels.some((m) =>
-    conv.threads[m]?.messages.some((msg) => msg.pending)
-  );
-
+  // In focus mode, only block if the focused model is still streaming
   const focusedModel = conv?.focusedModel;
+  const anyPending = focusedModel
+    ? !!conv?.threads[focusedModel]?.messages.some((msg) => msg.pending)
+    : !!conv?.selectedModels.some((m) =>
+        conv.threads[m]?.messages.some((msg) => msg.pending)
+      );
   const focusedInfo = focusedModel ? getModel(focusedModel) : undefined;
 
   const onSubmit = (e?: React.FormEvent) => {
