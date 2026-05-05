@@ -9,7 +9,7 @@ import { HeroComposer } from "@/components/HeroComposer";
 import { ConsensusButton } from "@/components/ConsensusButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
-import { KeyRound, Sparkles } from "lucide-react";
+import { KeyRound } from "lucide-react";
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
@@ -22,6 +22,7 @@ export default function Home() {
   const activeId = useChat((s) => s.activeId);
   const newConversation = useChat((s) => s.newConversation);
   const apiKey = useSettings((s) => s.apiKey);
+  const needsKey = !apiKey;
 
   const handleDragStart = (id: string) => {
     dragSrc.current = id;
@@ -57,7 +58,6 @@ export default function Home() {
   if (!mounted) return null;
 
   const conv = activeId ? conversations[activeId] : null;
-  const needsKey = !apiKey;
 
   // Determine if the conversation has any messages yet — if not, show the hero
   const hasMessages = !!conv && conv.selectedModels.some(
@@ -72,10 +72,7 @@ export default function Home() {
         {/* Top bar */}
         <header className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-4 py-2.5">
           <div className="flex min-w-0 items-center gap-2 md:hidden">
-            <div className="rounded-lg bg-gradient-to-br from-blue-500 to-purple-500 p-1 text-white">
-              <Sparkles size={12} />
-            </div>
-            <span className="text-sm font-semibold">Alles AI</span>
+            <img src="/AllesAI.png" alt="Alles AI" className="h-7 w-auto object-contain mix-blend-multiply scale-[2.0] origin-left" />
           </div>
           <div className="hidden min-w-0 items-baseline gap-2 md:flex">
             <h1 className="truncate text-base font-semibold text-[var(--fg)]">
@@ -101,7 +98,7 @@ export default function Home() {
           <div className="flex items-center gap-2 border-b border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
             <KeyRound size={14} />
             <span>
-              Add your OpenRouter API key in Settings to start chatting. Free models still require a key.
+            Add your Groq API key in Settings to start chatting.
             </span>
           </div>
         )}

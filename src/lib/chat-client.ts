@@ -89,23 +89,22 @@ export async function streamModel(opts: {
         model: resolvedModelId,
         messages: toApiMessages(history, settings.systemPrompt),
         apiKey: settings.apiKey || undefined,
-
+        geminiApiKey: settings.geminiApiKey || undefined,
       }),
     });
 
     if (!res.ok || !res.body) {
       const raw = await res.text().catch(() => res.statusText);
       let errorMsg = raw || "Request failed";
-      // Parse OpenRouter JSON error: { error: { message, code } }
+      // Parse Groq/OpenAI JSON error: { error: { message, code } }
       try {
         const json = JSON.parse(raw);
         if (json?.error?.message) errorMsg = json.error.message;
         else if (json?.message) errorMsg = json.message;
       } catch { /* keep raw text */ }
       if (res.status === 429) errorMsg = "Rate limited — wait a moment and try again.";
-      if (res.status === 401) errorMsg = "Invalid or missing API key. Check Settings.";
-      // Show the actual upstream error for 404 — helps diagnose model availability
-      if (res.status === 404 && !errorMsg.includes(resolvedModelId)) errorMsg = `Model "${resolvedModelId}" not found. ${errorMsg}`;
+      if (res.status === 401) errorMsg = "Invalid or missing API key for this model. Check Settings.";
+      if (res.status === 404) errorMsg = `Model "${resolvedModelId}" not found. ${errorMsg}`;
       useChat.getState().failAssistant(convId, modelId, msgId, errorMsg);
       return;
     }

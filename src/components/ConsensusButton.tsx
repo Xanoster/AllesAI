@@ -9,6 +9,7 @@ import { Markdown } from "./Markdown";
 export function ConsensusButton({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const apiKey = useSettings((s) => s.apiKey);
+  const geminiApiKey = useSettings((s) => s.geminiApiKey);
 
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -54,6 +55,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
           responses,
           consensusModel: CONSENSUS_MODEL,
           apiKey,
+          geminiApiKey,
         }),
       });
       if (!res.ok || !res.body) {

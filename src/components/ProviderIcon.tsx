@@ -22,10 +22,10 @@ const PATHS: Partial<Record<ProviderKey, string>> = {
 
 // Letter fallback for brands without a SimpleIcons path
 const LETTERS: Record<ProviderKey, string> = {
-  openai: "O",
-  meta:   "M",
-  qwen:   "Q",
-  groq:   "G",
+  openai:   "O",
+  meta:     "M",
+  qwen:     "Q",
+  gemini:   "G",
 };
 
 export function ProviderIcon({

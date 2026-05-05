@@ -62,6 +62,28 @@ export function SettingsDialog() {
                 </p>
               </div>
 
+              {/* Gemini API Key */}
+              <div>
+                <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
+                  Gemini API Key{" "}
+                  <a
+                    href="https://aistudio.google.com/api-keys"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+                  >
+                    get key <ExternalLink size={10} />
+                  </a>
+                </label>
+                <input
+                  type="password"
+                  value={s.geminiApiKey}
+                  onChange={(e) => s.setGeminiApiKey(e.target.value)}
+                  placeholder="AIza..."
+                  className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none focus:border-[var(--border-strong)] placeholder:text-[var(--fg-subtle)]"
+                />
+              </div>
+
               {/* System prompt */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--fg)]">

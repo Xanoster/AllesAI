@@ -1,13 +1,47 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useChat, type Message } from "@/lib/store";
 import { getModel } from "@/lib/models";
 import { PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
-import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical } from "lucide-react";
+import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain } from "lucide-react";
 import { abortModel } from "@/lib/chat-client";
+
+/** Split out <think>...</think> blocks from raw content. */
+function parseThinking(content: string): { thinking: string; answer: string } {
+  const match = content.match(/^<think>([\s\S]*?)<\/think>\s*/);
+  if (match) {
+    return { thinking: match[1].trim(), answer: content.slice(match[0].length) };
+  }
+  // Partial: still streaming inside <think>
+  if (content.startsWith("<think>") && !content.includes("</think>")) {
+    return { thinking: content.slice(7).trim(), answer: "" };
+  }
+  return { thinking: "", answer: content };
+}
+
+function ThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)] transition"
+      >
+        <Brain size={11} className="shrink-0" />
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        {open ? "Hide thinking" : "Show thinking"}
+      </button>
+      {open && (
+        <div className="mt-1.5 rounded border border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2 text-[12px] text-[var(--fg-muted)] italic">
+          <Markdown source={text} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 function MessageBubble({
   msg,
@@ -34,6 +68,7 @@ function MessageBubble({
 
   return (
     <div
+      data-role={msg.role}
       className="group relative rounded-lg border px-3 py-2 text-sm"
       style={{
         background: isUser ? "var(--user-bubble)" : "var(--asst-bubble)",
@@ -63,7 +98,20 @@ function MessageBubble({
           <Loader2 size={14} className="animate-spin" /> thinking…
         </div>
       ) : (
-        <Markdown source={msg.content || ""} />
+        (() => {
+          const { thinking, answer } = parseThinking(msg.content || "");
+          return (
+            <>
+              {thinking && <ThinkingBlock text={thinking} />}
+              {answer && <Markdown source={answer} />}
+              {!answer && msg.pending && (
+                <div className="flex items-center gap-2 text-[var(--fg-muted)]">
+                  <Loader2 size={14} className="animate-spin" /> thinking…
+                </div>
+              )}
+            </>
+          );
+        })()
       )}
       {showCopy && (
         <button
@@ -126,6 +174,80 @@ export function ModelColumn({
 
   const providerName = info ? PROVIDERS[info.provider].name : "Custom";
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const spacerRef = useRef<HTMLDivElement>(null);
+  const prevConvId = useRef<string>(convId);
+
+  // Find the ID of the latest user message
+  const latestUserMsg = [...thread.messages].reverse().find((m) => m.role === "user");
+  const latestUserMsgId = latestUserMsg?.id ?? null;
+
+  // Initialize with the current latest user message ID so the FIRST render
+  // (page refresh / opening old chat) does not trigger a scroll.
+  const lastUserMsgId = useRef<string | null>(latestUserMsgId);
+
+  useEffect(() => {
+    // Conversation switched — reset tracking to its current latest, don't scroll
+    if (prevConvId.current !== convId) {
+      prevConvId.current = convId;
+      lastUserMsgId.current = latestUserMsgId;
+      return;
+    }
+    // Only scroll when a NEW user message appeared after mount
+    if (latestUserMsgId === lastUserMsgId.current) return;
+    lastUserMsgId.current = latestUserMsgId;
+
+    // Wait for DOM paint, then scroll the new user bubble to the top
+    requestAnimationFrame(() => {
+      const container = scrollContainerRef.current;
+      if (!container) return;
+      const userBubbles = container.querySelectorAll("[data-role='user']");
+      const lastUser = userBubbles[userBubbles.length - 1] as HTMLElement | undefined;
+      if (lastUser) {
+        lastUser.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    });
+  }, [convId, latestUserMsgId]);
+
+  // Dynamic spacer: just enough room so the last user msg can scroll to top.
+  // Shrinks automatically as the assistant response grows beneath it.
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    const spacer = spacerRef.current;
+    if (!container || !spacer) return;
+
+    const updateSpacer = () => {
+      const userBubbles = container.querySelectorAll("[data-role='user']");
+      const lastUser = userBubbles[userBubbles.length - 1] as HTMLElement | undefined;
+      if (!lastUser) {
+        spacer.style.height = "0px";
+        return;
+      }
+      // Sum heights of last user bubble + everything after it (excluding spacer)
+      let contentBelow = 0;
+      let found = false;
+      Array.from(container.children).forEach((child) => {
+        if (child === spacer) return;
+        if (child === lastUser) found = true;
+        if (found) contentBelow += (child as HTMLElement).offsetHeight;
+      });
+      const needed = container.clientHeight - contentBelow;
+      spacer.style.height = `${Math.max(0, needed)}px`;
+    };
+
+    updateSpacer();
+    const ro = new ResizeObserver(updateSpacer);
+    ro.observe(container);
+    const mo = new MutationObserver(updateSpacer);
+    mo.observe(container, { childList: true, subtree: true, characterData: true });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
+  }, [thread.messages.length]);
+
+
+
   // Toggle pill shared between collapsed strip and full header
   const TogglePill = (
     <button
@@ -155,16 +277,23 @@ export function ModelColumn({
   if (isDisabled) {
     return (
       <div
-        draggable
-        onDragStart={onDragStart}
         onDragOver={onDragOver}
         onDrop={onDrop}
         className={
-          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden bg-[var(--bg-soft)] py-2 opacity-50 transition border-t-2 cursor-grab active:cursor-grabbing " +
+          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden bg-[var(--bg-soft)] py-2 opacity-50 transition border-t-2 " +
           (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent") +
           (isDragOver ? " ring-2 ring-inset ring-[var(--accent)]" : "")
         }
       >
+        {/* Grip is the only draggable element */}
+        <span
+          draggable
+          onDragStart={onDragStart}
+          className="cursor-grab active:cursor-grabbing text-[var(--fg-subtle)] hover:text-[var(--fg-muted)] shrink-0"
+          title="Drag to reorder"
+        >
+          <GripVertical size={14} />
+        </span>
         {TogglePill}
         {info && <ProviderIcon provider={info.provider} size={26} />}
         <span
@@ -178,8 +307,6 @@ export function ModelColumn({
   }
   return (
     <div
-      draggable
-      onDragStart={onDragStart}
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={
@@ -193,6 +320,8 @@ export function ModelColumn({
       <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3.5 py-2.5">
         <div className="flex min-w-0 items-center gap-2.5">
           <span
+            draggable
+            onDragStart={onDragStart}
             className="cursor-grab active:cursor-grabbing text-[var(--fg-subtle)] hover:text-[var(--fg-muted)] shrink-0"
             title="Drag to reorder"
           >
@@ -236,7 +365,7 @@ export function ModelColumn({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto p-3">
         {thread.messages.length === 0 && (
           <div className="pt-8 text-center text-xs text-[var(--fg-subtle)]">
             Send a prompt to see this model respond.
@@ -245,6 +374,9 @@ export function ModelColumn({
         {thread.messages.map((m) => (
           <MessageBubble key={m.id} msg={m} convId={convId} modelId={modelId} />
         ))}
+        {/* Dynamic spacer: only as tall as needed so latest user msg can reach top.
+            Shrinks as assistant response grows; disappears once content fills view. */}
+        <div ref={spacerRef} aria-hidden style={{ height: 0 }} />
       </div>
 
       {isOtherFocused && (

@@ -43,9 +43,10 @@ type Theme = "light" | "dark";
 type SettingsState = {
   apiKey: string;
   setApiKey: (k: string) => void;
+  geminiApiKey: string;
+  setGeminiApiKey: (k: string) => void;
   systemPrompt: string;
   setSystemPrompt: (s: string) => void;
-
 
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -57,6 +58,8 @@ export const useSettings = create<SettingsState>()(
     (set, get) => ({
       apiKey: "",
       setApiKey: (k) => set({ apiKey: k }),
+      geminiApiKey: "",
+      setGeminiApiKey: (k) => set({ geminiApiKey: k }),
       systemPrompt: "You are a helpful, concise assistant.",
       setSystemPrompt: (s) => set({ systemPrompt: s }),
 
@@ -112,8 +115,15 @@ const VALID_MODEL_IDS = new Set(MODEL_CATALOG.map((model) => model.id));
 const MODEL_ID_ALIASES: Record<string, string> = {
   // OpenRouter :free suffix → Groq IDs
   "openai/gpt-oss-120b:free": "openai/gpt-oss-120b",
-  // compound-beta renamed to compound
-  "groq/compound-beta": "groq/compound",
+  // Old DeepSeek IDs → point to nothing (model removed)
+  "deepseek-chat": "",
+  "deepseek-r1-distill-llama-70b": "",
+  "deepseek-v4-flash": "",
+  // Old Gemini IDs → 2.5 flash lite
+  "gemini-2.0-flash": "gemini-2.5-flash-lite",
+  "gemini-2.5-flash": "gemini-2.5-flash-lite",
+  // gemini-2.5-pro removed
+  "gemini-2.5-pro": "gemini-2.5-flash-lite",
 };
 
 function findLegacyModelIds(modelId: string): string[] {
@@ -375,7 +385,7 @@ export const useChat = create<ChatState>()(
     }),
     {
       name: "alles-ai-chats",
-      version: 10,
+      version: 15,
       migrate: (persistedState) => {
         const state = persistedState as Partial<ChatState> | undefined;
         const conversations = Object.fromEntries(

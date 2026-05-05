@@ -1,5 +1,4 @@
-// 5 FREE models — live-tested and responding on OpenRouter as of 2026-04-28.
-// Zero paid models. Zero redundancy. One per provider.
+// Models catalog — free defaults only.
 
 import type { ProviderKey } from "./providers";
 
@@ -51,13 +50,14 @@ export const MODEL_CATALOG: ModelInfo[] = [
     category: "General",
   },
   {
-    id: "groq/compound",
-    label: "Groq Compound",
-    shortLabel: "Compound",
-    provider: "groq",
+    id: "gemini-2.5-flash-lite",
+    label: "Gemini 2.5 Flash Lite",
+    shortLabel: "Gemini 2.5 Flash",
+    provider: "gemini",
     free: true,
-    context: 131072,
-    category: "Agents",
+    context: 1048576,
+    category: "General",
+    vision: true,
   },
 ];
 
@@ -73,18 +73,24 @@ export function getProviderGroups(): ProviderGroup[] {
       g = { provider: m.provider, paidModels: [] };
       map.set(m.provider, g);
     }
-    g.freeModel = m; // all are free — one per provider
+    if (m.free) {
+      g.freeModel = m;
+    } else {
+      g.paidModels.push(m);
+    }
   }
   return Array.from(map.values());
 }
 
-// Default selection: all 4 models
+// Default selection: all 6 models
 export const DEFAULT_SELECTED_MODELS = [
   "openai/gpt-oss-120b",
   "meta-llama/llama-4-scout-17b-16e-instruct",
   "qwen/qwen3-32b",
-  "groq/compound",
+  "gemini-2.5-flash-lite",
 ];
 
 // Consensus synthesizer — fastest + tool-capable
-export const CONSENSUS_MODEL = "groq/compound";
+// A dedicated synthesis model — not shown in the column UI, only used for Consensus.
+// llama-3.3-70b-versatile: 128K context, streaming, excellent at summarisation.
+export const CONSENSUS_MODEL = "llama-3.3-70b-versatile";
