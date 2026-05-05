@@ -15,12 +15,10 @@ type ChatMessage = {
 type RequestBody = {
   model: string;
   messages: ChatMessage[];
-  apiKey?: string; // BYOK from client
-  temperature?: number;
-
+  apiKey?: string;
 };
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 export async function POST(req: NextRequest) {
   let body: RequestBody;
@@ -30,35 +28,29 @@ export async function POST(req: NextRequest) {
     return new Response("Invalid JSON", { status: 400 });
   }
 
-  const { model, messages, apiKey, temperature = 0.7 } = body;
+  const { model, messages, apiKey } = body;
 
   if (!model || !Array.isArray(messages) || messages.length === 0) {
     return new Response("Missing model or messages", { status: 400 });
   }
 
-  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) {
     return new Response(
-      "No API key. Add your OpenRouter key in Settings (BYOK).",
+      "No API key. Add your Groq API key in Settings.",
       { status: 401 }
     );
   }
 
-  const origin = req.headers.get("origin") ?? "http://localhost:3000";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${key}`,
-    "HTTP-Referer": origin,
-    "X-Title": "Alles AI",
-  };
-
-  const upstream = await fetch(OPENROUTER_URL, {
+  const upstream = await fetch(GROQ_URL, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
     body: JSON.stringify({
       model,
       messages,
-      temperature,
       stream: true,
       stream_options: { include_usage: true },
     }),
@@ -75,7 +67,7 @@ export async function POST(req: NextRequest) {
   const upstreamRes = upstream as Response;
   if (!upstreamRes.body) return new Response("No response body", { status: 502 });
 
-  // Transform SSE -> NDJSON of {type:"delta",text} and {type:"usage",...} and {type:"done"}.
+  // Transform Groq SSE -> NDJSON {type:"delta",text} / {type:"usage"} / {type:"done"}
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = upstreamRes.body!.getReader();
@@ -91,7 +83,6 @@ export async function POST(req: NextRequest) {
           if (done) break;
           buffer += decoder.decode(value, { stream: true });
 
-          // SSE messages are separated by blank lines; lines start with "data: "
           let idx: number;
           while ((idx = buffer.indexOf("\n")) >= 0) {
             const line = buffer.slice(0, idx).trim();
@@ -115,7 +106,7 @@ export async function POST(req: NextRequest) {
               const finish = json?.choices?.[0]?.finish_reason;
               if (finish) send({ type: "finish", reason: finish });
             } catch {
-              // ignore malformed lines (keep-alives etc.)
+              // ignore malformed keep-alive lines
             }
           }
         }

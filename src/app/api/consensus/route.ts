@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 
 export const runtime = "edge";
 
-const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 type ResponseEntry = { model: string; content: string };
 
@@ -11,7 +11,6 @@ type RequestBody = {
   responses: ResponseEntry[];
   consensusModel: string;
   apiKey?: string;
-
 };
 
 const SYSTEM_PROMPT = `You are an expert synthesizer. You will be given a user's question and several answers from different AI models.
@@ -38,9 +37,9 @@ export async function POST(req: NextRequest) {
     return new Response("Missing prompt, responses, or consensusModel", { status: 400 });
   }
 
-  const key = apiKey || process.env.OPENROUTER_API_KEY;
+  const key = apiKey || process.env.GROQ_API_KEY;
   if (!key) {
-    return new Response("No API key. Add your OpenRouter key in Settings.", { status: 401 });
+    return new Response("No API key. Add your Groq API key in Settings.", { status: 401 });
   }
 
   const userBlock = [
@@ -52,17 +51,12 @@ export async function POST(req: NextRequest) {
     ),
   ].join("\n");
 
-  const origin = req.headers.get("origin") ?? "http://localhost:3000";
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${key}`,
-    "HTTP-Referer": origin,
-    "X-Title": "Alles AI",
-  };
-
-  const upstream = await fetch(OPENROUTER_URL, {
+  const upstream = await fetch(GROQ_URL, {
     method: "POST",
-    headers,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${key}`,
+    },
     body: JSON.stringify({
       model: consensusModel,
       temperature: 0.3,
