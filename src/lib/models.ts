@@ -1,5 +1,5 @@
-// 8 FREE models — all verified live on OpenRouter API as of 2026-04-28.
-// Zero paid models. Zero redundancy. One best per provider.
+// 5 FREE models — live-tested and responding on OpenRouter as of 2026-04-28.
+// Zero paid models. Zero redundancy. One per provider.
 
 import type { ProviderKey } from "./providers";
 
@@ -10,7 +10,6 @@ export type ModelInfo = {
   provider: ProviderKey;
   free: true;
   context: number;
-  /** One-word category for the UI badge */
   category: string;
   vision?: boolean;
   thinking?: boolean;
@@ -48,16 +47,16 @@ export const MODEL_CATALOG: ModelInfo[] = [
     shortLabel: "Llama 3.3",
     provider: "meta",
     free: true,
-    context: 65536,
+    context: 131072,
     category: "General",
   },
   {
     id: "qwen/qwen3-coder:free",
-    label: "Qwen3 Coder 480B",
-    shortLabel: "Qwen3 Coder",
+    label: "Qwen3 Coder",
+    shortLabel: "Qwen3",
     provider: "qwen",
     free: true,
-    context: 262000,
+    context: 131072,
     category: "Coding",
   },
   {
@@ -68,34 +67,6 @@ export const MODEL_CATALOG: ModelInfo[] = [
     free: true,
     context: 262144,
     category: "Agents",
-  },
-  {
-    id: "inclusionai/ling-2.6-1t:free",
-    label: "Ling 2.6 1T",
-    shortLabel: "Ling 2.6",
-    provider: "inclusionai",
-    free: true,
-    context: 262144,
-    category: "General",
-  },
-  {
-    id: "nousresearch/hermes-3-llama-3.1-405b:free",
-    label: "Hermes 3 405B",
-    shortLabel: "Hermes 3",
-    provider: "nous",
-    free: true,
-    context: 131072,
-    category: "Reasoning",
-    thinking: true,
-  },
-  {
-    id: "minimax/minimax-m2.5:free",
-    label: "MiniMax M2.5",
-    shortLabel: "M2.5",
-    provider: "minimax",
-    free: true,
-    context: 196608,
-    category: "General",
   },
 ];
 
@@ -123,5 +94,5 @@ export const DEFAULT_SELECTED_MODELS = [
   "nvidia/nemotron-3-super-120b-a12b:free",
 ];
 
-// Consensus synthesizer: largest context, large param count
+// Consensus synthesizer
 export const CONSENSUS_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";

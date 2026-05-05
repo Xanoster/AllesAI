@@ -3,6 +3,15 @@
 import { useChat, useSettings, type Message } from "./store";
 import { getModel } from "./models";
 
+// Per-model abort controllers for mid-stream stopping
+const activeControllers = new Map<string, AbortController>();
+
+export function abortModel(convId: string, modelId: string) {
+  const key = `${convId}:${modelId}`;
+  activeControllers.get(key)?.abort();
+  activeControllers.delete(key);
+}
+
 type ChatRequestMessage = {
   role: "system" | "user" | "assistant";
   content:
@@ -46,7 +55,14 @@ export async function streamModel(opts: {
   modelId: string;
   abortSignal?: AbortSignal;
 }) {
-  const { convId, modelId, abortSignal } = opts;
+  const { convId, modelId } = opts;
+  // Create a local controller so we can abort per-model independently
+  const localCtrl = new AbortController();
+  const streamKey = `${convId}:${modelId}`;
+  activeControllers.set(streamKey, localCtrl);
+  // If a parent signal is passed (e.g. "stop all"), hook it up
+  opts.abortSignal?.addEventListener("abort", () => localCtrl.abort());
+  const abortSignal = localCtrl.signal;
   const chatState = useChat.getState();
   const settings = useSettings.getState();
   const conv = chatState.conversations[convId];
@@ -134,14 +150,15 @@ export async function streamModel(opts: {
     useChat.getState().finishAssistant(convId, modelId, msgId, { usage });
   } catch (err: unknown) {
     if ((err as { name?: string })?.name === "AbortError") {
-      useChat
-        .getState()
-        .finishAssistant(convId, modelId, msgId, { error: "Stopped" });
+      // Keep whatever was already streamed — just mark as no longer pending
+      useChat.getState().finishAssistant(convId, modelId, msgId);
       return;
     }
     useChat
       .getState()
       .failAssistant(convId, modelId, msgId, err instanceof Error ? err.message : String(err));
+  } finally {
+    activeControllers.delete(streamKey);
   }
 }
 
@@ -155,8 +172,10 @@ export function sendPromptToAll(
   state.addUserMessage(convId, prompt, imageDataUrl);
   const conv = useChat.getState().conversations[convId];
   if (!conv) return ctrl;
-  // Respect focus mode: only stream to focused model if set
-  const targets = conv.focusedModel ? [conv.focusedModel] : conv.selectedModels;
+  // Respect focus mode and disabled models
+  const disabled = new Set(conv.disabledModels ?? []);
+  const targets = (conv.focusedModel ? [conv.focusedModel] : conv.selectedModels)
+    .filter((id) => !disabled.has(id));
   for (const modelId of targets) {
     void streamModel({ convId, modelId, abortSignal: ctrl.signal });
   }

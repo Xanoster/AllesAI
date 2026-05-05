@@ -88,9 +88,8 @@ export async function POST(req: NextRequest) {
     );
   });
 
-  if (upstream instanceof Response && !upstream.ok && !upstream.body) {
-    const text = await upstream.text();
-    return new Response(text, { status: upstream.status });
+  if (upstream instanceof Response && upstream.status !== 200) {
+    return upstream;
   }
   if (!(upstream instanceof Response) || !upstream.body) {
     return new Response("No upstream body", { status: 502 });

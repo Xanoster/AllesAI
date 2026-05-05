@@ -5,9 +5,9 @@ import { getModel } from "@/lib/models";
 import { PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
-import { Copy, Star, RefreshCw, AlertCircle, Loader2, Focus, X } from "lucide-react";
+import { Copy, AlertCircle, Loader2, Focus, Square } from "lucide-react";
 import { useState } from "react";
-import { streamModel } from "@/lib/chat-client";
+import { abortModel } from "@/lib/chat-client";
 
 function MessageBubble({
   msg,
@@ -18,7 +18,6 @@ function MessageBubble({
   convId: string;
   modelId: string;
 }) {
-  const toggleFavorite = useChat((s) => s.toggleFavorite);
   const [copied, setCopied] = useState(false);
   const isUser = msg.role === "user";
 
@@ -68,25 +67,6 @@ function MessageBubble({
           >
             <Copy size={11} /> {copied ? "copied" : "copy"}
           </button>
-          <button
-            onClick={() => toggleFavorite(convId, modelId, msg.id)}
-            className={
-              "inline-flex items-center gap-1 hover:text-yellow-500 " +
-              (msg.favorite ? "text-yellow-500" : "")
-            }
-            title="Favorite"
-          >
-            <Star size={11} fill={msg.favorite ? "currentColor" : "none"} />
-            {msg.favorite ? "favorited" : "favorite"}
-          </button>
-          {msg.usage?.completionTokens !== undefined && (
-            <span title="Tokens">
-              {msg.usage.promptTokens ?? "?"} → {msg.usage.completionTokens} tok
-            </span>
-          )}
-          {typeof msg.usage?.costUsd === "number" && msg.usage.costUsd > 0 && (
-            <span>${msg.usage.costUsd.toFixed(5)}</span>
-          )}
         </div>
       )}
     </div>
@@ -101,11 +81,14 @@ export function ModelColumn({
   modelId: string;
 }) {
   const conv = useChat((s) => s.conversations[convId]);
-  const setSelectedModels = useChat((s) => s.setSelectedModels);
   const setFocusedModel = useChat((s) => s.setFocusedModel);
+  const toggleModelEnabled = useChat((s) => s.toggleModelEnabled);
   const info = getModel(modelId);
   const thread = conv?.threads[modelId];
   if (!conv || !thread) return null;
+
+  const isDisabled = (conv.disabledModels ?? []).includes(modelId);
+  const isPending = thread.messages.some((m) => m.role === "assistant" && m.pending);
 
   const totalCost = thread.messages.reduce(
     (acc, m) => acc + (m.usage?.costUsd ?? 0),
@@ -115,29 +98,74 @@ export function ModelColumn({
   const isFocused = conv.focusedModel === modelId;
   const isOtherFocused = !!conv.focusedModel && !isFocused;
 
-  const removeColumn = () => {
-    setSelectedModels(
-      convId,
-      conv.selectedModels.filter((m) => m !== modelId)
-    );
-  };
-
   const toggleFocus = () => {
     setFocusedModel(convId, isFocused ? null : modelId);
   };
 
-  const regenerate = () => {
-    void streamModel({ convId, modelId });
+  const stopStream = () => {
+    abortModel(convId, modelId);
+  };
+
+  // Toggle = on/off + collapse/expand merged into one action
+  const handleToggle = () => {
+    toggleModelEnabled(convId, modelId);
   };
 
   const providerName = info ? PROVIDERS[info.provider].name : "Custom";
 
+  // Toggle pill shared between collapsed strip and full header
+  const TogglePill = (
+    <button
+      onClick={handleToggle}
+      title={isDisabled ? "Enable — expand and receive prompts" : "Pause — collapse and stop receiving prompts"}
+      className="flex items-center px-0.5"
+    >
+      <span
+        className={
+          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer rounded-full border-2 transition-colors " +
+          (isDisabled
+            ? "border-[var(--border)] bg-[var(--bg)]"
+            : "border-[var(--accent)] bg-[var(--accent)]")
+        }
+      >
+        <span
+          className={
+            "pointer-events-none inline-block h-2.5 w-2.5 translate-y-[1px] rounded-full bg-white shadow transition-transform " +
+            (isDisabled ? "translate-x-0.5" : "translate-x-[13px]")
+          }
+        />
+      </span>
+    </button>
+  );
+
+  // Collapsed strip when paused
+  if (isDisabled) {
+    return (
+      <div
+        className={
+          "flex h-full w-11 shrink-0 flex-col items-center gap-2 overflow-hidden rounded-xl border bg-[var(--bg-elevated)] py-2 opacity-50 transition " +
+          (isFocused ? "border-[var(--accent)]" : "border-[var(--border)]")
+        }
+      >
+        {TogglePill}
+        {info && <ProviderIcon provider={info.provider} size={26} />}
+        <span
+          className="mt-1 text-[10px] font-medium text-[var(--fg-muted)]"
+          style={{ writingMode: "vertical-rl", textOrientation: "mixed" }}
+        >
+          {info?.shortLabel ?? info?.label ?? modelId}
+        </span>
+      </div>
+    );
+  }
   return (
     <div
       className={
         "flex h-full min-w-[320px] flex-1 flex-col overflow-hidden rounded-xl border bg-[var(--bg-elevated)] transition " +
         (isFocused
           ? "border-[var(--accent)] shadow-lg shadow-[var(--accent)]/10"
+          : isDisabled
+          ? "border-[var(--border)] opacity-60"
           : "border-[var(--border)]") +
         (isOtherFocused ? " opacity-50" : "")
       }
@@ -153,11 +181,23 @@ export function ModelColumn({
             <div className="truncate text-[10px] text-[var(--fg-muted)]">
               {providerName}
               {info?.free ? " · free" : ""}
+              {isDisabled ? " · paused" : ""}
               {totalCost > 0 ? ` · $${totalCost.toFixed(4)}` : ""}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-0.5 text-[var(--fg-muted)]">
+        <div className="flex items-center gap-1 text-[var(--fg-muted)]">
+          {TogglePill}
+          {/* Stop streaming button — only visible when pending */}
+          {isPending && (
+            <button
+              onClick={stopStream}
+              className="rounded p-1 text-[var(--error)] hover:bg-[var(--bg)]"
+              title="Stop response"
+            >
+              <Square size={12} fill="currentColor" />
+            </button>
+          )}
           <button
             onClick={toggleFocus}
             className={
@@ -167,20 +207,6 @@ export function ModelColumn({
             title={isFocused ? "Exit focus mode" : "Focus on this model only"}
           >
             <Focus size={13} />
-          </button>
-          <button
-            onClick={regenerate}
-            className="rounded p-1 hover:bg-[var(--bg)] hover:text-[var(--fg)]"
-            title="Regenerate last"
-          >
-            <RefreshCw size={13} />
-          </button>
-          <button
-            onClick={removeColumn}
-            className="rounded p-1 hover:bg-[var(--bg)] hover:text-[var(--error)]"
-            title="Remove column"
-          >
-            <X size={13} />
           </button>
         </div>
       </div>

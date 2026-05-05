@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_SELECTED_MODELS } from "./models";
+import { DEFAULT_SELECTED_MODELS, MODEL_CATALOG } from "./models";
 import { uid } from "./utils";
 
 export type Role = "user" | "assistant" | "system";
@@ -33,6 +33,7 @@ export type Conversation = {
   createdAt: number;
   updatedAt: number;
   selectedModels: string[];
+  disabledModels?: string[]; // models paused — won't receive new prompts
   focusedModel?: string | null; // when set, only this model receives further prompts
   threads: Record<string, ModelThread>; // keyed by modelId
 };
@@ -79,11 +80,13 @@ export const useSettings = create<SettingsState>()(
 type ChatState = {
   conversations: Record<string, Conversation>;
   activeId: string | null;
+  lastUsedModels: string[];
   newConversation: (selectedModels?: string[]) => string;
   setActive: (id: string) => void;
   deleteConversation: (id: string) => void;
   renameConversation: (id: string, title: string) => void;
   setSelectedModels: (id: string, models: string[]) => void;
+  toggleModelEnabled: (convId: string, modelId: string) => void;
   setFocusedModel: (id: string, modelId: string | null) => void;
   addUserMessage: (id: string, content: string, imageDataUrl?: string) => string;
   startAssistant: (convId: string, modelId: string) => string; // returns msg id
@@ -112,13 +115,85 @@ function emptyConversation(selectedModels: string[]): Conversation {
   };
 }
 
+const VALID_MODEL_IDS = new Set(MODEL_CATALOG.map((model) => model.id));
+
+const MODEL_ID_ALIASES: Record<string, string> = {
+  "qwen/qwen3-coder-480b:free":        "qwen/qwen3-coder:free",
+  "inclusionai/ling-2.6-1t:free":      "meta-llama/llama-3.3-70b-instruct:free",
+  "minimax/minimax-m2.5:free":         "qwen/qwen3-coder:free",
+  "nvidia/nemotron-3-super-120b:free": "nvidia/nemotron-3-super-120b-a12b:free",
+};
+
+function findLegacyModelIds(modelId: string): string[] {
+  return Object.entries(MODEL_ID_ALIASES)
+    .filter(([, currentId]) => currentId === modelId)
+    .map(([legacyId]) => legacyId);
+}
+
+function normalizeModelId(modelId: string): string | null {
+  const normalized = MODEL_ID_ALIASES[modelId] ?? modelId;
+  return VALID_MODEL_IDS.has(normalized) ? normalized : null;
+}
+
+function sanitizeConversation(conversation: Conversation): Conversation {
+  const selectedModels = Array.from(
+    new Set(
+      conversation.selectedModels
+        .map(normalizeModelId)
+        .filter((modelId): modelId is string => Boolean(modelId))
+    )
+  );
+
+  const nextSelectedModels = selectedModels.length > 0 ? selectedModels : DEFAULT_SELECTED_MODELS;
+  const threads: Record<string, ModelThread> = {};
+
+  for (const modelId of nextSelectedModels) {
+    const sourceThread =
+      conversation.threads[modelId] ??
+      findLegacyModelIds(modelId)
+        .map((legacyId) => conversation.threads[legacyId])
+        .find(Boolean);
+    threads[modelId] = sourceThread
+      ? {
+          ...sourceThread,
+          modelId,
+          messages: sourceThread.messages.map((message) =>
+            message.modelId ? { ...message, modelId: normalizeModelId(message.modelId) ?? modelId } : message
+          ),
+        }
+      : { modelId, messages: [] };
+  }
+
+  const focusedModel = conversation.focusedModel ? normalizeModelId(conversation.focusedModel) : null;
+
+  return {
+    ...conversation,
+    selectedModels: nextSelectedModels,
+    focusedModel: focusedModel && nextSelectedModels.includes(focusedModel) ? focusedModel : null,
+    threads,
+  };
+}
+
 export const useChat = create<ChatState>()(
   persist(
     (set, get) => ({
       conversations: {},
       activeId: null,
+      lastUsedModels: DEFAULT_SELECTED_MODELS,
       newConversation: (selectedModels) => {
-        const models = selectedModels ?? DEFAULT_SELECTED_MODELS;
+        // If the active conversation is still blank (no messages), reuse it
+        const { conversations, activeId, lastUsedModels } = get();
+        if (activeId) {
+          const active = conversations[activeId];
+          if (active) {
+            const hasMessages = Object.values(active.threads).some(
+              (t) => t.messages.length > 0
+            );
+            if (!hasMessages) return activeId;
+          }
+        }
+        // Use explicitly passed models, or the last models the user selected globally
+        const models = selectedModels ?? lastUsedModels;
         const c = emptyConversation(models);
         set((s) => ({
           conversations: { ...s.conversations, [c.id]: c },
@@ -156,9 +231,29 @@ export const useChat = create<ChatState>()(
           // If focused model was deselected, clear focus
           const focusedModel = c.focusedModel && models.includes(c.focusedModel) ? c.focusedModel : null;
           return {
+            lastUsedModels: models,
             conversations: {
               ...s.conversations,
               [id]: { ...c, selectedModels: models, threads, focusedModel, updatedAt: Date.now() },
+            },
+          };
+        }),
+      toggleModelEnabled: (convId, modelId) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const disabled = c.disabledModels ?? [];
+          const isDisabled = disabled.includes(modelId);
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: {
+                ...c,
+                disabledModels: isDisabled
+                  ? disabled.filter((m) => m !== modelId)
+                  : [...disabled, modelId],
+                updatedAt: Date.now(),
+              },
             },
           };
         }),
@@ -286,6 +381,27 @@ export const useChat = create<ChatState>()(
           };
         }),
     }),
-    { name: "alles-ai-chats" }
+    {
+      name: "alles-ai-chats",
+      version: 2,
+      migrate: (persistedState) => {
+        const state = persistedState as Partial<ChatState> | undefined;
+        const conversations = Object.fromEntries(
+          Object.entries(state?.conversations ?? {}).map(([id, conversation]) => [
+            id,
+            sanitizeConversation(conversation as Conversation),
+          ])
+        );
+
+        return {
+          ...state,
+          conversations,
+          activeId:
+            state?.activeId && conversations[state.activeId]
+              ? state.activeId
+              : Object.keys(conversations)[0] ?? null,
+        } as ChatState;
+      },
+    }
   )
 );

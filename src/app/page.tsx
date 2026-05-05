@@ -5,9 +5,9 @@ import { useChat, useSettings } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { ModelColumn } from "@/components/ModelColumn";
 import { Composer } from "@/components/Composer";
-import { ModelPicker } from "@/components/ModelPicker";
 import { HeroComposer } from "@/components/HeroComposer";
 import { ConsensusButton } from "@/components/ConsensusButton";
+import { ModelPicker } from "@/components/ModelPicker";
 import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
 import { KeyRound, Sparkles } from "lucide-react";
 
