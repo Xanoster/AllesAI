@@ -146,7 +146,7 @@ function MessageBubble({
         </div>
       )}
       {showMeta && (
-        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--fg-subtle)]">
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[var(--fg-subtle)]">
           {typeof msg.responseTimeMs === "number" && (
             <span>{formatDuration(msg.responseTimeMs)}</span>
           )}
