@@ -23,8 +23,8 @@ export type ProviderGroup = {
 
 export const MODEL_CATALOG: ModelInfo[] = [
   {
-    id: "openai/gpt-oss-120b:free",
-    label: "GPT-OSS 120B",
+    id: "openai/gpt-oss-20b:free",
+    label: "GPT-OSS 20B",
     shortLabel: "GPT-OSS",
     provider: "openai",
     free: true,
@@ -60,12 +60,12 @@ export const MODEL_CATALOG: ModelInfo[] = [
     category: "Coding",
   },
   {
-    id: "nvidia/nemotron-3-super-120b-a12b:free",
-    label: "Nemotron 3 Super 120B",
-    shortLabel: "Nemotron Super",
+    id: "nvidia/nemotron-3-nano-30b-a3b:free",
+    label: "Nemotron 3 Nano 30B",
+    shortLabel: "Nemotron Nano",
     provider: "nvidia",
     free: true,
-    context: 262144,
+    context: 131072,
     category: "Agents",
   },
 ];
@@ -89,10 +89,10 @@ export function getProviderGroups(): ProviderGroup[] {
 
 // Default selection: 3 diverse free models
 export const DEFAULT_SELECTED_MODELS = [
-  "openai/gpt-oss-120b:free",
+  "openai/gpt-oss-20b:free",
   "google/gemma-4-31b-it:free",
-  "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-nano-30b-a3b:free",
 ];
 
 // Consensus synthesizer
-export const CONSENSUS_MODEL = "nvidia/nemotron-3-super-120b-a12b:free";
+export const CONSENSUS_MODEL = "nvidia/nemotron-3-nano-30b-a3b:free";

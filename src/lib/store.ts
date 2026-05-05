@@ -45,8 +45,7 @@ type SettingsState = {
   setApiKey: (k: string) => void;
   systemPrompt: string;
   setSystemPrompt: (s: string) => void;
-  temperature: number;
-  setTemperature: (t: number) => void;
+
 
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -60,8 +59,7 @@ export const useSettings = create<SettingsState>()(
       setApiKey: (k) => set({ apiKey: k }),
       systemPrompt: "You are a helpful, concise assistant.",
       setSystemPrompt: (s) => set({ systemPrompt: s }),
-      temperature: 0.7,
-      setTemperature: (t) => set({ temperature: t }),
+
 
       theme: "dark",
       setTheme: (t) => set({ theme: t }),
@@ -112,10 +110,12 @@ function emptyConversation(selectedModels: string[]): Conversation {
 const VALID_MODEL_IDS = new Set(MODEL_CATALOG.map((model) => model.id));
 
 const MODEL_ID_ALIASES: Record<string, string> = {
+  "openai/gpt-oss-120b:free":           "openai/gpt-oss-20b:free",
   "qwen/qwen3-coder-480b:free":        "qwen/qwen3-coder:free",
   "inclusionai/ling-2.6-1t:free":      "meta-llama/llama-3.3-70b-instruct:free",
   "minimax/minimax-m2.5:free":         "qwen/qwen3-coder:free",
-  "nvidia/nemotron-3-super-120b:free": "nvidia/nemotron-3-super-120b-a12b:free",
+  "nvidia/nemotron-3-super-120b:free": "nvidia/nemotron-3-nano-30b-a3b:free",
+  "nvidia/nemotron-3-super-120b-a12b:free": "nvidia/nemotron-3-nano-30b-a3b:free",
 };
 
 function findLegacyModelIds(modelId: string): string[] {
