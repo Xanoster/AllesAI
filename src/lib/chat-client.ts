@@ -2,6 +2,7 @@
 
 import { filterEnabledModelIds, useChat, useSettings, type Message, normalizeModelId } from "./store";
 import { isCloudOllamaModelId, isOllamaModelId } from "./models";
+import { streamDraftKey, useStreamDrafts } from "./stream-drafts";
 
 // Per-model abort controllers for mid-stream stopping
 const activeControllers = new Map<string, AbortController>();
@@ -21,6 +22,52 @@ type WebContext = {
   text: string;
   grounding: NonNullable<Message["grounding"]>;
 };
+
+function createDraftWriter(key: string) {
+  let content = "";
+  let frame: number | null = null;
+
+  const writeDraft = () => {
+    frame = null;
+    useStreamDrafts.getState().setDraft(key, content);
+  };
+
+  const cancelScheduledWrite = () => {
+    if (frame === null) return;
+    if (typeof cancelAnimationFrame === "function") {
+      cancelAnimationFrame(frame);
+    } else {
+      window.clearTimeout(frame);
+    }
+    frame = null;
+  };
+
+  const scheduleWrite = () => {
+    if (frame !== null) return;
+    frame =
+      typeof requestAnimationFrame === "function"
+        ? requestAnimationFrame(writeDraft)
+        : window.setTimeout(writeDraft, 16);
+  };
+
+  return {
+    append(delta: string) {
+      content += delta;
+      scheduleWrite();
+    },
+    getContent() {
+      return content;
+    },
+    flush() {
+      cancelScheduledWrite();
+      writeDraft();
+    },
+    clear() {
+      cancelScheduledWrite();
+      useStreamDrafts.getState().clearDraft(key);
+    },
+  };
+}
 
 function extractApiError(raw: string, fallback: string): string {
   if (!raw) return fallback;
@@ -114,6 +161,9 @@ export async function streamModel(opts: {
 
   const msgId = opts.assistantMsgId ?? chatState.startAssistant(convId, modelId);
   chatState.setAssistantStatus(convId, modelId, msgId, "thinking");
+  const draftKey = streamDraftKey(convId, modelId, msgId);
+  useStreamDrafts.getState().clearDraft(draftKey);
+  const draft = createDraftWriter(draftKey);
 
   // Normalize model ID in case persisted data still has a stale alias
   const resolvedModelId = normalizeModelId(modelId) ?? modelId;
@@ -169,7 +219,7 @@ export async function streamModel(opts: {
                 );
               }
             }
-            useChat.getState().appendAssistant(convId, modelId, msgId, evt.text);
+            draft.append(evt.text);
           } else if (evt.type === "usage") {
             const u = evt.usage as {
               prompt_tokens?: number;
@@ -184,7 +234,12 @@ export async function streamModel(opts: {
           } else if (evt.type === "grounding") {
             grounding = { queries: evt.queries, sources: evt.sources };
           } else if (evt.type === "error") {
-            useChat.getState().failAssistant(convId, modelId, msgId, evt.message);
+            draft.flush();
+            useChat.getState().finishAssistant(convId, modelId, msgId, {
+              content: draft.getContent(),
+              error: evt.message,
+              pending: false,
+            });
             return;
           }
         } catch {
@@ -193,22 +248,34 @@ export async function streamModel(opts: {
       }
     }
 
-    useChat.getState().finishAssistant(convId, modelId, msgId, { usage, grounding });
+    draft.flush();
+    useChat.getState().finishAssistant(convId, modelId, msgId, {
+      content: draft.getContent(),
+      usage,
+      grounding,
+    });
   } catch (err: unknown) {
     if ((err as { name?: string })?.name === "AbortError") {
       // Keep whatever was already streamed - just mark as no longer pending
-      useChat.getState().finishAssistant(convId, modelId, msgId);
+      draft.flush();
+      useChat.getState().finishAssistant(convId, modelId, msgId, {
+        content: draft.getContent(),
+      });
       return;
     }
-    useChat
-      .getState()
-      .failAssistant(convId, modelId, msgId, err instanceof Error ? err.message : String(err));
+    draft.flush();
+    useChat.getState().finishAssistant(convId, modelId, msgId, {
+      content: draft.getContent(),
+      error: err instanceof Error ? err.message : String(err),
+      pending: false,
+    });
   } finally {
     if (process.env.NODE_ENV === "development") {
       console.debug(
         `[stream] finished ${resolvedModelId}: ${Math.round(performance.now() - startedAt)}ms`
       );
     }
+    draft.clear();
     activeControllers.delete(streamKey);
   }
 }

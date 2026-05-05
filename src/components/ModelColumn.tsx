@@ -8,6 +8,7 @@ import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
 import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain, Globe, RotateCcw } from "lucide-react";
 import { abortModel, streamModel } from "@/lib/chat-client";
+import { streamDraftKey, useStreamDrafts } from "@/lib/stream-drafts";
 
 /** Split out <think>...</think> blocks from raw content. */
 function parseThinking(content: string): { thinking: string; answer: string } {
@@ -43,16 +44,66 @@ function ThinkingBlock({ text }: { text: string }) {
   );
 }
 
+function StreamingThinkingBlock({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="mb-2">
+      <button
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)] transition"
+      >
+        <Brain size={11} className="shrink-0" />
+        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+        {open ? "Hide thinking" : "Show thinking"}
+      </button>
+      {open && (
+        <div className="mt-1.5 whitespace-pre-wrap break-words rounded border border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2 text-[12px] italic text-[var(--fg-muted)]">
+          {text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StreamingContent({ content, pendingLabel }: { content: string; pendingLabel: string }) {
+  const { thinking, answer } = parseThinking(content);
+
+  return (
+    <>
+      {thinking && <StreamingThinkingBlock text={thinking} />}
+      {answer && (
+        <div className="whitespace-pre-wrap break-words leading-relaxed text-[var(--fg)]">
+          {answer}
+        </div>
+      )}
+      {!answer && (
+        <div className="flex items-center gap-2 text-[var(--fg-muted)]">
+          <Loader2 size={14} className="animate-spin" /> {pendingLabel}
+        </div>
+      )}
+    </>
+  );
+}
+
 function MessageBubble({
   msg,
+  convId,
+  modelId,
   compact,
   onRetry,
 }: {
   msg: Message;
+  convId: string;
+  modelId: string;
   compact: boolean;
   onRetry: () => void;
 }) {
   const isUser = msg.role === "user";
+  const draftContent = useStreamDrafts((s) =>
+    msg.role === "assistant" && msg.pending
+      ? s.drafts[streamDraftKey(convId, modelId, msg.id)]
+      : undefined
+  );
   const [copied, setCopied] = useState(false);
 
   const onCopy = async () => {
@@ -69,6 +120,7 @@ function MessageBubble({
     !isUser && !msg.pending && !msg.error && !!msg.content;
   const showMeta = !isUser && !msg.pending && typeof msg.responseTimeMs === "number";
   const pendingLabel = msg.status === "searching" ? "searching..." : "thinking...";
+  const visibleContent = msg.pending && msg.role === "assistant" ? draftContent ?? msg.content : msg.content;
 
   return (
     <div
@@ -81,7 +133,7 @@ function MessageBubble({
     >
       {msg.error === "Stopped" ? (
         <>
-          {msg.content && <Markdown source={msg.content} />}
+          {visibleContent && <Markdown source={visibleContent} />}
           <div className="mt-1 flex items-center gap-1 text-[11px] text-[var(--fg-subtle)]">
             <Square size={10} fill="currentColor" /> stopped
           </div>
@@ -99,13 +151,11 @@ function MessageBubble({
             <RotateCcw size={11} /> Retry
           </button>
         </div>
-      ) : msg.role === "assistant" && msg.content === "" && msg.pending ? (
-        <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-          <Loader2 size={14} className="animate-spin" /> {pendingLabel}
-        </div>
+      ) : msg.role === "assistant" && msg.pending ? (
+        <StreamingContent content={visibleContent || ""} pendingLabel={pendingLabel} />
       ) : (
         (() => {
-          const { thinking, answer } = parseThinking(msg.content || "");
+          const { thinking, answer } = parseThinking(visibleContent || "");
           return (
             <>
               {thinking && <ThinkingBlock text={thinking} />}
@@ -434,7 +484,14 @@ export function ModelColumn({
           </div>
         )}
         {thread.messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} compact={compact} onRetry={regenerate} />
+          <MessageBubble
+            key={m.id}
+            msg={m}
+            convId={conv.id}
+            modelId={modelId}
+            compact={compact}
+            onRetry={regenerate}
+          />
         ))}
         {/* Dynamic spacer: only as tall as needed so latest user msg can reach top.
             Shrinks as assistant response grows; disappears once content fills view. */}
