@@ -1,7 +1,7 @@
 "use client";
 
-import { useChat, useSettings, type Message, normalizeModelId } from "./store";
-import { isOllamaModelId, isCloudOllamaModelId } from "./models";
+import { filterEnabledModelIds, useChat, useSettings, type Message, normalizeModelId } from "./store";
+import { isCloudOllamaModelId, isOllamaModelId } from "./models";
 
 // Per-model abort controllers for mid-stream stopping
 const activeControllers = new Map<string, AbortController>();
@@ -90,7 +90,7 @@ export async function streamModel(opts: {
         errorMsg = "Ollama is offline or unreachable. Start Ollama and retry this column.";
       }
       if (res.status === 502 && isCloudOllamaModelId(resolvedModelId)) {
-        errorMsg = "Cloud Ollama is unreachable. Check the base URL in Settings.";
+        errorMsg = "Ollama API is unreachable. Check the base URL in Settings.";
       }
       useChat.getState().failAssistant(convId, modelId, msgId, errorMsg);
       return;
@@ -160,15 +160,14 @@ export function sendPromptToAll(
   const ctrl = new AbortController();
   const state = useChat.getState();
   const settings = useSettings.getState();
-  state.addUserMessage(convId, prompt);
-  const conv = useChat.getState().conversations[convId];
+  const conv = state.conversations[convId];
   if (!conv) return ctrl;
   // Respect focus mode and disabled models
   const disabled = new Set(conv.disabledModels ?? []);
-  const targets = (conv.focusedModel ? [conv.focusedModel] : conv.selectedModels)
-    .filter((id) => !disabled.has(id))
-    .filter((id) => settings.localEnabled || !isOllamaModelId(id))
-    .filter((id) => settings.cloudOllamaEnabled || !isCloudOllamaModelId(id));
+  const candidateTargets = (conv.focusedModel ? [conv.focusedModel] : conv.selectedModels)
+    .filter((id) => !disabled.has(id));
+  const targets = filterEnabledModelIds(candidateTargets, settings);
+  state.addUserMessage(convId, prompt, targets);
   for (const modelId of targets) {
     void streamModel({ convId, modelId, abortSignal: ctrl.signal });
   }

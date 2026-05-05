@@ -29,10 +29,15 @@ function Toggle({
   return (
     <button
       type="button"
-      onClick={() => onChange(!on)}
-      className="flex items-center gap-2 text-xs text-[var(--fg)]"
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onChange(!on);
+      }}
+      className="flex w-full items-center justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-soft)] px-2.5 py-2 text-left text-xs text-[var(--fg)] transition hover:border-[var(--border-strong)]"
       aria-pressed={on}
     >
+      <span className="font-medium">{label}</span>
       <span
         className={
           "relative h-5 w-9 shrink-0 rounded-full transition " +
@@ -46,7 +51,6 @@ function Toggle({
           }
         />
       </span>
-      {label}
     </button>
   );
 }
@@ -56,7 +60,7 @@ export function SettingsDialog() {
   const [localLoading, setLocalLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const s = useSettings();
-  const removeOllamaModels = useChat((state) => state.removeOllamaModels);
+  const removeApiProviderModels = useChat((state) => state.removeApiProviderModels);
 
   const refreshLocalModels = async () => {
     setLocalLoading(true);
@@ -81,7 +85,22 @@ export function SettingsDialog() {
   const setLocalEnabled = (enabled: boolean) => {
     s.setLocalEnabled(enabled);
     setLocalError(null);
-    if (!enabled) removeOllamaModels();
+    if (!enabled) removeApiProviderModels("ollama-local");
+  };
+
+  const setGroqEnabled = (enabled: boolean) => {
+    s.setGroqEnabled(enabled);
+    if (!enabled) removeApiProviderModels("groq");
+  };
+
+  const setGeminiEnabled = (enabled: boolean) => {
+    s.setGeminiEnabled(enabled);
+    if (!enabled) removeApiProviderModels("gemini");
+  };
+
+  const setCloudOllamaEnabled = (enabled: boolean) => {
+    s.setCloudOllamaEnabled(enabled);
+    if (!enabled) removeApiProviderModels("ollama-cloud");
   };
 
   return (
@@ -116,56 +135,72 @@ export function SettingsDialog() {
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[var(--fg)]">Cloud keys</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">BYOK keys stay in browser storage.</div>
+                    <div className="text-xs font-semibold text-[var(--fg)]">API providers</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Turn off a provider to hide its models.</div>
                   </div>
                   <div className="flex gap-1">
-                    <StatusPill label={s.apiKey ? "Groq ready" : "Groq key missing"} ok={Boolean(s.apiKey)} />
-                    <StatusPill label={s.geminiApiKey ? "Gemini ready" : "Gemini key missing"} ok={Boolean(s.geminiApiKey)} />
+                    <StatusPill
+                      label={s.groqEnabled ? (s.apiKey ? "Groq ready" : "Groq key missing") : "Groq off"}
+                      ok={s.groqEnabled && Boolean(s.apiKey)}
+                    />
+                    <StatusPill
+                      label={s.geminiEnabled ? (s.geminiApiKey ? "Gemini ready" : "Gemini key missing") : "Gemini off"}
+                      ok={s.geminiEnabled && Boolean(s.geminiApiKey)}
+                    />
                   </div>
                 </div>
 
                 <div className="space-y-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
-                      Groq API Key{" "}
-                      <a
-                        href="https://console.groq.com"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
-                      >
-                        get key <ExternalLink size={10} />
-                      </a>
-                    </label>
-                    <input
-                      type="password"
-                      value={s.apiKey}
-                      onChange={(e) => s.setApiKey(e.target.value)}
-                      placeholder="gsk_..."
-                      className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                    />
+                  <div className="space-y-2">
+                    <Toggle on={s.groqEnabled} onChange={setGroqEnabled} label="Enable Groq models" />
+                    {s.groqEnabled && (
+                      <>
+                        <label className="block text-xs font-medium text-[var(--fg)]">
+                          Groq API key{" "}
+                          <a
+                            href="https://console.groq.com"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+                          >
+                            get key <ExternalLink size={10} />
+                          </a>
+                        </label>
+                        <input
+                          type="password"
+                          value={s.apiKey}
+                          onChange={(e) => s.setApiKey(e.target.value)}
+                          placeholder="gsk_..."
+                          className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                        />
+                      </>
+                    )}
                   </div>
 
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
-                      Gemini API Key{" "}
-                      <a
-                        href="https://aistudio.google.com/api-keys"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
-                      >
-                        get key <ExternalLink size={10} />
-                      </a>
-                    </label>
-                    <input
-                      type="password"
-                      value={s.geminiApiKey}
-                      onChange={(e) => s.setGeminiApiKey(e.target.value)}
-                      placeholder="AIza..."
-                      className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                    />
+                  <div className="space-y-2">
+                    <Toggle on={s.geminiEnabled} onChange={setGeminiEnabled} label="Enable Gemini models" />
+                    {s.geminiEnabled && (
+                      <>
+                        <label className="block text-xs font-medium text-[var(--fg)]">
+                          Gemini API key{" "}
+                          <a
+                            href="https://aistudio.google.com/api-keys"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+                          >
+                            get key <ExternalLink size={10} />
+                          </a>
+                        </label>
+                        <input
+                          type="password"
+                          value={s.geminiApiKey}
+                          onChange={(e) => s.setGeminiApiKey(e.target.value)}
+                          placeholder="AIza..."
+                          className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                        />
+                      </>
+                    )}
                   </div>
                 </div>
               </section>
@@ -173,8 +208,8 @@ export function SettingsDialog() {
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold text-[var(--fg)]">Local Ollama</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">Models installed on this machine via Ollama.</div>
+                    <div className="text-xs font-semibold text-[var(--fg)]">Local models</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Use models installed on this machine.</div>
                   </div>
                   <StatusPill
                     label={s.localEnabled ? `${s.availableLocalModels.length} found` : "Off"}
@@ -183,7 +218,7 @@ export function SettingsDialog() {
                 </div>
 
                 <div className="space-y-2">
-                  <Toggle on={s.localEnabled} onChange={setLocalEnabled} label="Enable local Ollama models" />
+                  <Toggle on={s.localEnabled} onChange={setLocalEnabled} label="Enable local models" />
 
                   {s.localEnabled && (
                     <>
@@ -223,22 +258,28 @@ export function SettingsDialog() {
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold text-[var(--fg)]">Cloud Ollama (ollama.com)</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">Hosted models via the ollama.com API.</div>
+                    <div className="text-xs font-semibold text-[var(--fg)]">Ollama</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Use hosted ollama.com models.</div>
                   </div>
                   <StatusPill
-                    label={s.cloudOllamaEnabled ? "On" : "Off"}
+                    label={
+                      s.cloudOllamaEnabled
+                        ? s.ollamaApiKey
+                          ? "On"
+                          : "On, key needed"
+                        : "Off"
+                    }
                     ok={s.cloudOllamaEnabled}
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Toggle on={s.cloudOllamaEnabled} onChange={s.setCloudOllamaEnabled} label="Enable cloud Ollama models" />
+                  <Toggle on={s.cloudOllamaEnabled} onChange={setCloudOllamaEnabled} label="Enable Ollama models" />
 
                   {s.cloudOllamaEnabled && (
                     <>
                       <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                        Cloud base URL
+                        Ollama API URL
                       </label>
                       <input
                         value={s.ollamaCloudBaseUrl}
@@ -247,7 +288,7 @@ export function SettingsDialog() {
                         className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
                       />
                       <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                        API key
+                        Ollama API key
                       </label>
                       <input
                         type="password"
@@ -258,30 +299,6 @@ export function SettingsDialog() {
                       />
                     </>
                   )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
-                <div className="mb-3">
-                  <div className="text-xs font-semibold text-[var(--fg)]">Behavior</div>
-                  <div className="text-[11px] text-[var(--fg-muted)]">Display and response preferences.</div>
-                </div>
-                <div className="space-y-3">
-                  <Toggle on={s.webSearch} onChange={s.setWebSearch} label="Enable Gemini web search" />
-                  <Toggle on={s.compactColumns} onChange={s.setCompactColumns} label="Compact response columns" />
-                  <Toggle on={s.saveConsensusToChat} onChange={s.setSaveConsensusToChat} label="Save consensus automatically" />
-
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
-                      System prompt
-                    </label>
-                    <textarea
-                      value={s.systemPrompt}
-                      onChange={(e) => s.setSystemPrompt(e.target.value)}
-                      rows={3}
-                      className="w-full resize-none rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                    />
-                  </div>
                 </div>
               </section>
             </div>

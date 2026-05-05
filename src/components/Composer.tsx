@@ -2,7 +2,12 @@
 
 import { useRef, useState } from "react";
 import { sendPromptToAll } from "@/lib/chat-client";
-import { useChat, useSettings } from "@/lib/store";
+import {
+  filterEnabledModelIds,
+  useChat,
+  useSettings,
+  type ProviderToggleSettings,
+} from "@/lib/store";
 import { ArrowUp, Globe, Square, X } from "lucide-react";
 import { getModel } from "@/lib/models";
 
@@ -11,13 +16,29 @@ export function Composer({ convId }: { convId: string }) {
   const setFocusedModel = useChat((s) => s.setFocusedModel);
   const webSearch = useSettings((s) => s.webSearch);
   const setWebSearch = useSettings((s) => s.setWebSearch);
+  const groqEnabled = useSettings((s) => s.groqEnabled);
+  const geminiEnabled = useSettings((s) => s.geminiEnabled);
+  const localEnabled = useSettings((s) => s.localEnabled);
+  const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const [text, setText] = useState("");
   const ctrlRef = useRef<AbortController | null>(null);
+  const enabledSettings: ProviderToggleSettings = {
+    groqEnabled,
+    geminiEnabled,
+    cloudOllamaEnabled,
+    localEnabled,
+  };
+  const visibleSelectedModels = conv
+    ? filterEnabledModelIds(conv.selectedModels, enabledSettings)
+    : [];
 
-  const focusedModel = conv?.focusedModel;
+  const focusedModel =
+    conv?.focusedModel && visibleSelectedModels.includes(conv.focusedModel)
+      ? conv.focusedModel
+      : null;
   const anyPending = focusedModel
     ? !!conv?.threads[focusedModel]?.messages.some((msg) => msg.pending)
-    : !!conv?.selectedModels.some((m) => conv.threads[m]?.messages.some((msg) => msg.pending));
+    : !!visibleSelectedModels.some((m) => conv?.threads[m]?.messages.some((msg) => msg.pending));
   const focusedInfo = focusedModel ? getModel(focusedModel) : undefined;
 
   const onSubmit = (e?: React.FormEvent) => {

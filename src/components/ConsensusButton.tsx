@@ -2,19 +2,43 @@
 
 import { useMemo, useState } from "react";
 import { Check, Save, Sparkles, X } from "lucide-react";
-import { useChat, useSettings } from "@/lib/store";
-import { CONSENSUS_MODEL, getModel, isOllamaModelId } from "@/lib/models";
+import {
+  filterEnabledModelIds,
+  useChat,
+  useSettings,
+  type ProviderToggleSettings,
+} from "@/lib/store";
+import { CONSENSUS_MODEL, getModel, isCloudOllamaModelId, isOllamaModelId } from "@/lib/models";
 import { Markdown } from "./Markdown";
 
 export function ConsensusButton({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const saveConsensus = useChat((s) => s.saveConsensus);
   const apiKey = useSettings((s) => s.apiKey);
+  const groqEnabled = useSettings((s) => s.groqEnabled);
   const geminiApiKey = useSettings((s) => s.geminiApiKey);
+  const geminiEnabled = useSettings((s) => s.geminiEnabled);
   const ollamaBaseUrl = useSettings((s) => s.ollamaBaseUrl);
+  const ollamaApiKey = useSettings((s) => s.ollamaApiKey);
+  const ollamaCloudBaseUrl = useSettings((s) => s.ollamaCloudBaseUrl);
+  const localEnabled = useSettings((s) => s.localEnabled);
+  const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const consensusModel = useSettings((s) => s.consensusModel);
   const setConsensusModel = useSettings((s) => s.setConsensusModel);
   const saveConsensusToChat = useSettings((s) => s.saveConsensusToChat);
+  const enabledSettings = useMemo<ProviderToggleSettings>(
+    () => ({
+      groqEnabled,
+      geminiEnabled,
+      cloudOllamaEnabled,
+      localEnabled,
+    }),
+    [cloudOllamaEnabled, geminiEnabled, groqEnabled, localEnabled]
+  );
+  const activeModelIds = useMemo(
+    () => (conv ? filterEnabledModelIds(conv.selectedModels, enabledSettings) : []),
+    [conv, enabledSettings]
+  );
 
   const [open, setOpen] = useState(false);
   const [text, setText] = useState("");
@@ -22,18 +46,25 @@ export function ConsensusButton({ convId }: { convId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const localConsensusChoices = useMemo(() => {
+  const ollamaConsensusChoices = useMemo(() => {
     if (!conv) return [];
-    return conv.selectedModels
-      .filter(isOllamaModelId)
-      .map((id) => ({ id, label: getModel(id)?.label ?? id }));
-  }, [conv]);
+    return activeModelIds
+      .filter((id) => isOllamaModelId(id) || isCloudOllamaModelId(id))
+      .map((id) => {
+        const model = getModel(id);
+        return {
+          id,
+          label: model?.label ?? id,
+          source: model?.apiProvider === "ollama-cloud" ? "Ollama" : "Local",
+        };
+      });
+  }, [activeModelIds, conv]);
 
   if (!conv) return null;
 
   const responses: { model: string; content: string }[] = [];
   let latestPrompt = "";
-  for (const modelId of conv.selectedModels) {
+  for (const modelId of activeModelIds) {
     const t = conv.threads[modelId];
     if (!t) continue;
     let lastUser = "";
@@ -51,11 +82,14 @@ export function ConsensusButton({ convId }: { convId: string }) {
 
   if (responses.length < 2) return null;
 
+  const fallbackConsensusModel = ollamaConsensusChoices[0]?.id;
   const selectedConsensusModel =
-    consensusModel === CONSENSUS_MODEL || localConsensusChoices.some((choice) => choice.id === consensusModel)
+    (groqEnabled && consensusModel === CONSENSUS_MODEL) ||
+    ollamaConsensusChoices.some((choice) => choice.id === consensusModel)
       ? consensusModel
-      : CONSENSUS_MODEL;
-  const fallbackConsensusModel = localConsensusChoices[0]?.id;
+      : fallbackConsensusModel ?? (groqEnabled ? CONSENSUS_MODEL : "");
+
+  if (!selectedConsensusModel) return null;
 
   const persistConsensus = (content: string) => {
     if (!content.trim() || saved) return;
@@ -82,6 +116,8 @@ export function ConsensusButton({ convId }: { convId: string }) {
           apiKey,
           geminiApiKey,
           ollamaBaseUrl,
+          ollamaApiKey,
+          ollamaCloudBaseUrl,
         }),
       });
       if (!res.ok || !res.body) {
@@ -165,10 +201,10 @@ export function ConsensusButton({ convId }: { convId: string }) {
                 disabled={loading}
                 className="rounded border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] outline-none"
               >
-                <option value={CONSENSUS_MODEL}>Groq consensus</option>
-                {localConsensusChoices.map((choice) => (
+                {groqEnabled && <option value={CONSENSUS_MODEL}>Groq consensus</option>}
+                {ollamaConsensusChoices.map((choice) => (
                   <option key={choice.id} value={choice.id}>
-                    Local: {choice.label}
+                    {choice.source}: {choice.label}
                   </option>
                 ))}
               </select>

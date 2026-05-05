@@ -267,16 +267,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  // Cloud Ollama path (ollama.com hosted models).
+  // Hosted Ollama path (ollama.com API models).
   if (model.startsWith(CLOUD_OLLAMA_PREFIX)) {
     const baseUrl = resolveOllamaBaseUrl(body.ollamaCloudBaseUrl || DEFAULT_CLOUD_OLLAMA_BASE_URL);
-    if (!baseUrl) return new Response("Invalid cloud Ollama base URL.", { status: 400 });
+    if (!baseUrl) return new Response("Invalid Ollama API base URL.", { status: 400 });
 
     const cloudModel = model.slice(CLOUD_OLLAMA_PREFIX.length);
-    if (!cloudModel) return new Response("Missing cloud Ollama model name.", { status: 400 });
+    if (!cloudModel) return new Response("Missing Ollama model name.", { status: 400 });
 
     const cloudKey = body.ollamaApiKey || process.env.OLLAMA_API_KEY;
-    if (!cloudKey) return new Response("No API key for cloud Ollama. Add OLLAMA_API_KEY to .env.local or Settings.", { status: 401 });
+    if (!cloudKey) return new Response("No Ollama API key. Add OLLAMA_API_KEY to .env.local or Settings.", { status: 401 });
 
     const upstream = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
@@ -291,14 +291,14 @@ export async function POST(req: NextRequest) {
       }),
     }).catch((err: unknown) => {
       return new Response(
-        `Cloud Ollama is not reachable at ${baseUrl}. ${err instanceof Error ? err.message : String(err)}`,
+        `Ollama API is not reachable at ${baseUrl}. ${err instanceof Error ? err.message : String(err)}`,
         { status: 502 }
       );
     });
 
     if (upstream instanceof Response && upstream.status !== 200) {
       const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
-      return new Response(errBody || `Cloud Ollama returned HTTP ${upstream.status}`, { status: upstream.status });
+      return new Response(errBody || `Ollama API returned HTTP ${upstream.status}`, { status: upstream.status });
     }
     const upstreamRes = upstream as Response;
     if (!upstreamRes.body) return new Response("No response body", { status: 502 });

@@ -15,6 +15,8 @@ type RequestBody = {
   apiKey?: string;
   geminiApiKey?: string;
   ollamaBaseUrl?: string;
+  ollamaApiKey?: string;
+  ollamaCloudBaseUrl?: string;
 };
 
 const SYSTEM_PROMPT = `You are an expert synthesizer. You will be given a user's question and several answers from different AI models.
@@ -29,14 +31,16 @@ Format:
 **Disagreements** (only if any): <bullet list>`;
 
 const OLLAMA_PREFIX = "ollama/";
+const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
+const DEFAULT_CLOUD_OLLAMA_BASE_URL = "https://ollama.com";
 
 function resolveOllamaBaseUrl(raw?: string) {
   const input = (raw || DEFAULT_OLLAMA_BASE_URL).trim();
   try {
     const url = new URL(input);
     if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-    url.pathname = url.pathname.replace(/\/+$/, "");
+    url.pathname = url.pathname.replace(/\/v1\/?$/, "").replace(/\/+$/, "");
     url.search = "";
     url.hash = "";
     return url.toString().replace(/\/+$/, "");
@@ -61,24 +65,32 @@ export async function POST(req: NextRequest) {
 
   // Resolve provider URL and key from model name
   const fallbackModel = body.fallbackConsensusModel;
-  const wantsGroq = !consensusModel.startsWith("gemini") && !consensusModel.startsWith(OLLAMA_PREFIX);
+  const wantsGroq =
+    !consensusModel.startsWith("gemini") &&
+    !consensusModel.startsWith(OLLAMA_PREFIX) &&
+    !consensusModel.startsWith(CLOUD_OLLAMA_PREFIX);
   const hasGroqKey = Boolean(apiKey || process.env.GROQ_API_KEY);
-  if (wantsGroq && !hasGroqKey && fallbackModel?.startsWith(OLLAMA_PREFIX)) {
+  if (
+    wantsGroq &&
+    !hasGroqKey &&
+    (fallbackModel?.startsWith(OLLAMA_PREFIX) || fallbackModel?.startsWith(CLOUD_OLLAMA_PREFIX))
+  ) {
     consensusModel = fallbackModel;
   }
 
   const isGemini = consensusModel.startsWith("gemini");
   const isOllama = consensusModel.startsWith(OLLAMA_PREFIX);
+  const isCloudOllama = consensusModel.startsWith(CLOUD_OLLAMA_PREFIX);
 
   const upstreamUrl = GROQ_URL;
   let key: string | undefined;
   if (isGemini) {
     key = geminiApiKey || process.env.GEMINI_API_KEY;
-  } else if (!isOllama) {
+  } else if (!isOllama && !isCloudOllama) {
     key = apiKey || process.env.GROQ_API_KEY;
   }
 
-  if (!isOllama && !key) {
+  if (!isOllama && !isCloudOllama && !key) {
     const providerName = isGemini ? "Gemini" : "Groq";
     return new Response(`No API key. Add your ${providerName} API key in Settings.`, { status: 401 });
   }
@@ -103,16 +115,29 @@ export async function POST(req: NextRequest) {
 
   const encoder = new TextEncoder();
 
-  if (isOllama) {
-    const baseUrl = resolveOllamaBaseUrl(body.ollamaBaseUrl);
-    if (!baseUrl) return new Response("Invalid Ollama base URL.", { status: 400 });
+  if (isOllama || isCloudOllama) {
+    const baseUrl = resolveOllamaBaseUrl(
+      isCloudOllama
+        ? body.ollamaCloudBaseUrl || DEFAULT_CLOUD_OLLAMA_BASE_URL
+        : body.ollamaBaseUrl
+    );
+    if (!baseUrl) return new Response(isCloudOllama ? "Invalid Ollama API base URL." : "Invalid Ollama base URL.", { status: 400 });
 
-    const ollamaModel = consensusModel.slice(OLLAMA_PREFIX.length);
+    const prefix = isCloudOllama ? CLOUD_OLLAMA_PREFIX : OLLAMA_PREFIX;
+    const ollamaModel = consensusModel.slice(prefix.length);
     if (!ollamaModel) return new Response("Missing Ollama model name.", { status: 400 });
+
+    const ollamaKey = body.ollamaApiKey || process.env.OLLAMA_API_KEY;
+    if (isCloudOllama && !ollamaKey) {
+      return new Response("No Ollama API key. Add OLLAMA_API_KEY to .env.local or Settings.", { status: 401 });
+    }
 
     const upstream = await fetch(`${baseUrl}/api/chat`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(ollamaKey ? { Authorization: `Bearer ${ollamaKey}` } : {}),
+      },
       body: JSON.stringify({
         model: ollamaModel,
         stream: true,
@@ -123,14 +148,14 @@ export async function POST(req: NextRequest) {
       }),
     }).catch((err: unknown) => {
       return new Response(
-        `Ollama is not reachable at ${baseUrl}. ${err instanceof Error ? err.message : String(err)}`,
+        `${isCloudOllama ? "Ollama API" : "Ollama"} is not reachable at ${baseUrl}. ${err instanceof Error ? err.message : String(err)}`,
         { status: 502 }
       );
     });
 
     if (upstream instanceof Response && upstream.status !== 200) {
       const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
-      return new Response(errBody || `Ollama returned HTTP ${upstream.status}`, { status: upstream.status });
+      return new Response(errBody || `${isCloudOllama ? "Ollama API" : "Ollama"} returned HTTP ${upstream.status}`, { status: upstream.status });
     }
     if (!(upstream instanceof Response) || !upstream.body) return new Response("No upstream body", { status: 502 });
 

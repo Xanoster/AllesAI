@@ -8,31 +8,34 @@
 
 ## Models
 
-| Model | Provider | Context | Notes |
-|---|---|---|---|
-| GPT-OSS 120B | OpenAI (via Groq) | 128K | General |
-| Llama 4 Scout 17B | Meta (via Groq) | 128K | Vision |
-| Qwen3 32B | Qwen (via Groq) | 128K | General |
-| Gemini 2.5 Flash Lite | Google | 1M | Vision |
+| Model | Default source | Other selectable sources | Context | Notes |
+|---|---|---|---|---|
+| GPT-OSS 120B | Groq | Ollama, local if installed | 128K | Reasoning |
+| Llama 4 Scout 17B | Groq | Local Ollama if installed | 128K | Vision |
+| Qwen3 32B | Groq | Local Ollama if installed | 128K | General |
+| Gemini 2.5 Flash Lite | Google Gemini API | - | 1M | Vision |
+| Gemini 3 Flash Preview, DeepSeek V4 Pro, Qwen3.5 397B, Gemma 4 31B | Ollama | Local Ollama if installed | varies | Optional hosted Q&A/reasoning models |
 
 All models are **free**. Groq models require a [Groq API key](https://console.groq.com). Gemini requires a [Google AI Studio key](https://aistudio.google.com/api-keys).
-Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.
+Optional hosted Ollama models require an Ollama API key. Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.
 
 ## Features
 
 - **Multi-model side-by-side chat** - fan a prompt out to all selected models in parallel
+- **One row per model family** - choose GPT-OSS once, then switch the API source between Groq, Ollama, or local
 - **Token-by-token streaming** per column independently
 - **BYOK** - API keys stored only in your browser's `localStorage`, never on a server
 - **Per-column multi-turn** - each model keeps its own conversation thread
 - **Focus mode** - click the focus icon on any column to direct further prompts to one model only
 - **Pause / resume columns** - toggle individual models on/off without losing their history
 - **Drag to reorder** columns
-- **Optional local Ollama models** - select installed local models and compare them beside Groq/Gemini
+- **Provider toggles** - show only the APIs you want to use
+- **Optional local Ollama models** - refresh installed local models and compare them beside hosted APIs
+- **Optional Ollama models** - compare hosted ollama.com models without adding duplicate columns for the same model family
 - **Consensus answer** - synthesizes all model responses into one best answer using Groq or a selected local model
 - **Thinking block** - collapsible `<think>` reasoning display for models that support it
 - **Markdown + syntax highlighting** for code-heavy responses
-- **Vision input** - attach an image; vision-capable models receive it, text-only models still answer the prompt
-- **Persistent history** in `localStorage` - full conversation sidebar with search, delete confirmation, export, import, and clear-all confirmation
+- **Persistent history** in `localStorage` - full conversation sidebar with search and delete confirmation
 - **Compact columns** for dense desktop comparisons
 - **Dark / light theme**
 - **Stop streaming** per-column or globally
@@ -57,7 +60,8 @@ npm run dev
 
 Open <http://localhost:3000>, click **Settings**, add your API keys, then start chatting.
 
-For local models, install and run [Ollama](https://ollama.com), enable **Local Ollama models** in Settings, refresh installed models, then select the local models from **Models**.
+For local models, install and run [Ollama](https://ollama.com), enable **Local models** in Settings, refresh installed models, then select the local models from **Models**.
+For hosted Ollama models, enable **Ollama models** in Settings, add your Ollama API key, then choose Ollama from a model's source dropdown.
 
 ### Environment variables (optional server-side keys)
 
@@ -66,9 +70,10 @@ Create `.env.local` in the `app/` folder:
 ```env
 GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=AIza...
+OLLAMA_API_KEY=ollama_...
 ```
 
-If set, these act as fallback keys so visitors don't need their own. Client-provided keys (from Settings) always take priority.
+If set, these act as fallback keys so visitors do not need their own. Client-provided keys from Settings always take priority.
 
 ## Architecture
 
@@ -76,7 +81,7 @@ If set, these act as fallback keys so visitors don't need their own. Client-prov
 Browser (Next.js page)
   |-- Zustand store (conversations, threads, settings) -> localStorage
   `-- For each selected model:
-        POST /api/chat  --------------------------------> Groq / Gemini / Ollama
+        POST /api/chat  --------------------------------> Groq / Gemini / local Ollama / Ollama API
                        <-------------------------------- NDJSON (delta | usage | done | error)
 
   Consensus:
@@ -84,8 +89,8 @@ Browser (Next.js page)
                             <-------------------------- NDJSON (delta | done)
 ```
 
-- `/api/chat` - routes to Groq, Gemini, or Ollama based on model ID prefix
-- `/api/consensus` - takes all model responses, synthesizes a best answer via Groq or a selected local model
+- `/api/chat` - routes to Groq, Gemini, local Ollama, or the Ollama API based on model ID prefix
+- `/api/consensus` - takes all model responses, synthesizes a best answer via Groq or a selected Ollama model
 - `/api/ollama/models` - lists installed Ollama models from the configured local base URL
 
 ## Project structure

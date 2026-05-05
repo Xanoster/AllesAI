@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { sendPromptToAll } from "@/lib/chat-client";
-import { useChat, useSettings } from "@/lib/store";
+import {
+  filterEnabledModelIds,
+  useChat,
+  useSettings,
+  type ProviderToggleSettings,
+} from "@/lib/store";
 import { ArrowUp, Globe } from "lucide-react";
 import { ProviderIcon } from "./ProviderIcon";
 import { getModel } from "@/lib/models";
@@ -11,9 +16,20 @@ export function HeroComposer({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const webSearch = useSettings((s) => s.webSearch);
   const setWebSearch = useSettings((s) => s.setWebSearch);
+  const groqEnabled = useSettings((s) => s.groqEnabled);
+  const geminiEnabled = useSettings((s) => s.geminiEnabled);
+  const localEnabled = useSettings((s) => s.localEnabled);
+  const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const [text, setText] = useState("");
 
   if (!conv) return null;
+  const enabledSettings: ProviderToggleSettings = {
+    groqEnabled,
+    geminiEnabled,
+    cloudOllamaEnabled,
+    localEnabled,
+  };
+  const visibleSelectedModels = filterEnabledModelIds(conv.selectedModels, enabledSettings);
 
   const onSubmit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -36,7 +52,7 @@ export function HeroComposer({ convId }: { convId: string }) {
             Compare answers from top free AI models, side-by-side.
           </p>
           <div className="mt-6 flex items-center justify-center gap-2">
-            {conv.selectedModels.slice(0, 8).map((id) => {
+            {visibleSelectedModels.slice(0, 8).map((id) => {
               const m = getModel(id);
               if (!m) return null;
               return (
@@ -45,9 +61,9 @@ export function HeroComposer({ convId }: { convId: string }) {
                 </div>
               );
             })}
-            {conv.selectedModels.length > 8 && (
+            {visibleSelectedModels.length > 8 && (
               <span className="ml-1 text-sm text-[var(--fg-muted)]">
-                +{conv.selectedModels.length - 8}
+                +{visibleSelectedModels.length - 8}
               </span>
             )}
           </div>

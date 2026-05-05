@@ -1,11 +1,16 @@
 "use client";
 
-import { PROVIDERS, type ProviderKey } from "@/lib/providers";
+import {
+  API_PROVIDERS,
+  PROVIDERS,
+  type ApiProviderKey,
+  type ProviderKey,
+} from "@/lib/providers";
 
 /**
- * Inline SVG brand icons on coloured tiles.
- * Sources: SimpleIcons CC0 (openai, google, meta, nvidia).
- * Others fall back to bold letter monograms.
+ * Inline SVG brand icons on colored tiles.
+ * Sources: SimpleIcons CC0 where paths are available.
+ * Lesser-known brands fall back to bold letter monograms.
  */
 
 // Real SVG paths from SimpleIcons (viewBox 0 0 24 24, fill)
@@ -18,15 +23,30 @@ const PATHS: Partial<Record<ProviderKey, string>> = {
 
   qwen:
     "M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.25 17.25h-1.5v-3.75h-7.5v3.75h-1.5v-9a3.75 3.75 0 0 1 7.5 0v.75h-1.5v-.75a2.25 2.25 0 0 0-4.5 0v3.75h7.5z",
+
+  gemini:
+    "M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z",
 };
+
+const API_PATHS: Partial<Record<ApiProviderKey, string>> = {};
 
 // Letter fallback for brands without a SimpleIcons path
 const LETTERS: Record<ProviderKey, string> = {
   openai:   "O",
+  deepseek: "D",
   meta:     "M",
   qwen:     "Q",
   gemini:   "G",
-  ollama:   "L",
+  zhipu:    "Z",
+  minimax:  "M",
+  ollama:   "O",
+};
+
+const API_LETTERS: Record<ApiProviderKey, string> = {
+  groq: "G",
+  gemini: "G",
+  "ollama-cloud": "O",
+  "ollama-local": "O",
 };
 
 export function ProviderIcon({
@@ -39,8 +59,55 @@ export function ProviderIcon({
   className?: string;
 }) {
   const info = PROVIDERS[provider];
-  const path = PATHS[provider];
-  const letter = LETTERS[provider] ?? "?";
+  return (
+    <IconTile
+      label={info.name}
+      color={info.color}
+      path={PATHS[provider]}
+      letter={LETTERS[provider] ?? "?"}
+      size={size}
+      className={className}
+    />
+  );
+}
+
+export function ApiProviderIcon({
+  provider,
+  size = 18,
+  className = "",
+}: {
+  provider: ApiProviderKey;
+  size?: number;
+  className?: string;
+}) {
+  const info = API_PROVIDERS[provider];
+  return (
+    <IconTile
+      label={info.name}
+      color={info.color}
+      path={API_PATHS[provider]}
+      letter={API_LETTERS[provider] ?? "?"}
+      size={size}
+      className={className}
+    />
+  );
+}
+
+function IconTile({
+  label,
+  color,
+  path,
+  letter,
+  size,
+  className,
+}: {
+  label: string;
+  color: string;
+  path?: string;
+  letter: string;
+  size: number;
+  className: string;
+}) {
   const borderRadius = Math.round(size * 0.26);
   const iconSize = Math.round(size * 0.62);
   const fontSize = Math.round(size * 0.52);
@@ -51,11 +118,11 @@ export function ProviderIcon({
       style={{
         width: size,
         height: size,
-        background: info.color,
+        background: color,
         borderRadius,
       }}
-      title={info.name}
-      aria-label={info.name}
+      title={label}
+      aria-label={label}
     >
       {path ? (
         <svg viewBox="0 0 24 24" width={iconSize} height={iconSize} fill="white" aria-hidden>
@@ -68,7 +135,7 @@ export function ProviderIcon({
             fontSize,
             fontWeight: 800,
             lineHeight: 1,
-            letterSpacing: "-0.02em",
+            letterSpacing: 0,
             fontFamily: "system-ui, -apple-system, sans-serif",
           }}
         >

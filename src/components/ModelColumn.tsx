@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useChat, useSettings, type Message } from "@/lib/store";
 import { getModel } from "@/lib/models";
-import { PROVIDERS } from "@/lib/providers";
+import { API_PROVIDERS, PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
 import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain, Globe, RotateCcw } from "lucide-react";
@@ -67,6 +67,7 @@ function MessageBubble({
 
   const showCopy =
     !isUser && !msg.pending && !msg.error && !!msg.content;
+  const showMeta = !isUser && !msg.pending && typeof msg.responseTimeMs === "number";
 
   return (
     <div
@@ -144,6 +145,13 @@ function MessageBubble({
           ))}
         </div>
       )}
+      {showMeta && (
+        <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-[var(--border)] pt-1.5 text-[10px] text-[var(--fg-subtle)]">
+          {typeof msg.responseTimeMs === "number" && (
+            <span>{formatDuration(msg.responseTimeMs)}</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -191,7 +199,8 @@ export function ModelColumn({
     toggleModelEnabled(convId, modelId);
   };
 
-  const providerName = info ? PROVIDERS[info.provider].name : "Custom";
+  const ownerName = info ? PROVIDERS[info.provider].name : "Custom";
+  const sourceName = info ? API_PROVIDERS[info.apiProvider].shortName : "Custom";
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const spacerRef = useRef<HTMLDivElement>(null);
@@ -361,9 +370,16 @@ export function ModelColumn({
             <div className="truncate text-sm font-medium text-[var(--fg)]">
               {info?.label ?? modelId}
             </div>
-            <div className="truncate text-[11px] text-[var(--fg-muted)]">
-              {providerName}
-              {info?.free ? " - free" : ""}
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
+              <span className="truncate">{ownerName}</span>
+              <span className="shrink-0 rounded border border-[var(--border)] bg-[var(--bg)] px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-[var(--fg-muted)]">
+                {sourceName}
+              </span>
+              {info?.free && (
+                <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-emerald-600 dark:text-emerald-400">
+                  free
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -423,4 +439,13 @@ export function ModelColumn({
       )}
     </div>
   );
+}
+
+function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return "";
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest > 0 ? `${minutes}m ${rest}s` : `${minutes}m`;
 }
