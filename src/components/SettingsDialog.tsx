@@ -40,9 +40,9 @@ export function SettingsDialog() {
               {/* API Key */}
               <div>
                 <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
-                  OpenRouter API Key (BYOK){" "}
+                  Groq API Key (BYOK){" "}
                   <a
-                    href="https://openrouter.ai/keys"
+                    href="https://console.groq.com"
                     target="_blank"
                     rel="noreferrer"
                     className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
@@ -54,7 +54,7 @@ export function SettingsDialog() {
                   type="password"
                   value={s.apiKey}
                   onChange={(e) => s.setApiKey(e.target.value)}
-                  placeholder="sk-or-v1-..."
+                  placeholder="gsk_..."
                   className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none focus:border-[var(--border-strong)] placeholder:text-[var(--fg-subtle)]"
                 />
                 <p className="mt-1 text-[11px] text-[var(--fg-muted)]">
@@ -75,21 +75,6 @@ export function SettingsDialog() {
                 />
               </div>
 
-              {/* Temperature */}
-              <div>
-                <label className="mb-1 block text-xs font-medium text-[var(--fg)]">
-                  Temperature: {s.temperature.toFixed(2)}
-                </label>
-                <input
-                  type="range"
-                  min={0}
-                  max={2}
-                  step={0.05}
-                  value={s.temperature}
-                  onChange={(e) => s.setTemperature(parseFloat(e.target.value))}
-                  className="w-full accent-[var(--accent)]"
-                />
-              </div>
 
             </div>
           </div>
