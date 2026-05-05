@@ -133,12 +133,12 @@ export function SettingsDialog() {
 
             <div className="space-y-4">
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
-                <div className="mb-3 flex items-center justify-between">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-semibold text-[var(--fg)]">API providers</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">Turn off a provider to hide its models.</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Hosted APIs that run cloud models.</div>
                   </div>
-                  <div className="flex gap-1">
+                  <div className="flex flex-wrap justify-end gap-1">
                     <StatusPill
                       label={s.groqEnabled ? (s.apiKey ? "Groq ready" : "Groq key missing") : "Groq off"}
                       ok={s.groqEnabled && Boolean(s.apiKey)}
@@ -147,12 +147,19 @@ export function SettingsDialog() {
                       label={s.geminiEnabled ? (s.geminiApiKey ? "Gemini ready" : "Gemini key missing") : "Gemini off"}
                       ok={s.geminiEnabled && Boolean(s.geminiApiKey)}
                     />
+                    <StatusPill
+                      label={s.cloudOllamaEnabled ? (s.ollamaApiKey ? "Ollama ready" : "Ollama key missing") : "Ollama off"}
+                      ok={s.cloudOllamaEnabled && Boolean(s.ollamaApiKey)}
+                    />
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="space-y-2">
-                    <Toggle on={s.groqEnabled} onChange={setGroqEnabled} label="Enable Groq models" />
+                    <Toggle on={s.groqEnabled} onChange={setGroqEnabled} label="Enable Groq hosted models" />
+                    <div className="text-[11px] text-[var(--fg-muted)]">
+                      Fast hosted routes for GPT-OSS, Llama, and Qwen model families.
+                    </div>
                     {s.groqEnabled && (
                       <>
                         <label className="block text-xs font-medium text-[var(--fg)]">
@@ -177,8 +184,11 @@ export function SettingsDialog() {
                     )}
                   </div>
 
-                  <div className="space-y-2">
-                    <Toggle on={s.geminiEnabled} onChange={setGeminiEnabled} label="Enable Gemini models" />
+                  <div className="space-y-2 border-t border-[var(--border)] pt-4">
+                    <Toggle on={s.geminiEnabled} onChange={setGeminiEnabled} label="Enable Gemini API models" />
+                    <div className="text-[11px] text-[var(--fg-muted)]">
+                      Google AI Studio routes for Gemini models and vision-capable requests.
+                    </div>
                     {s.geminiEnabled && (
                       <>
                         <label className="block text-xs font-medium text-[var(--fg)]">
@@ -202,6 +212,45 @@ export function SettingsDialog() {
                       </>
                     )}
                   </div>
+
+                  <div className="space-y-2 border-t border-[var(--border)] pt-4">
+                    <Toggle on={s.cloudOllamaEnabled} onChange={setCloudOllamaEnabled} label="Enable Ollama hosted models" />
+                    <div className="text-[11px] text-[var(--fg-muted)]">
+                      Hosted ollama.com API routes for optional cloud models.
+                    </div>
+
+                    {s.cloudOllamaEnabled && (
+                      <>
+                        <label className="block text-xs font-medium text-[var(--fg)]">
+                          Ollama API URL
+                        </label>
+                        <input
+                          value={s.ollamaCloudBaseUrl}
+                          onChange={(e) => s.setOllamaCloudBaseUrl(e.target.value)}
+                          placeholder="https://ollama.com"
+                          className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                        />
+                        <label className="block text-xs font-medium text-[var(--fg)]">
+                          Ollama API key{" "}
+                          <a
+                            href="https://ollama.com/settings/keys"
+                            target="_blank"
+                            rel="noreferrer"
+                            className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+                          >
+                            get key <ExternalLink size={10} />
+                          </a>
+                        </label>
+                        <input
+                          type="password"
+                          value={s.ollamaApiKey}
+                          onChange={(e) => s.setOllamaApiKey(e.target.value)}
+                          placeholder="Your ollama.com API key"
+                          className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                        />
+                      </>
+                    )}
+                  </div>
                 </div>
               </section>
 
@@ -209,49 +258,43 @@ export function SettingsDialog() {
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-semibold text-[var(--fg)]">Web search</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">Google Custom Search shared by all models.</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Tavily MCP shared by all models.</div>
                   </div>
                   <StatusPill
-                    label={s.googleSearchApiKey && s.googleSearchEngineId ? "Ready" : "Setup needed"}
-                    ok={Boolean(s.googleSearchApiKey && s.googleSearchEngineId)}
+                    label={s.tavilyApiKey ? "Ready" : "Env or key needed"}
+                    ok={Boolean(s.tavilyApiKey)}
                   />
                 </div>
 
                 <div className="space-y-2">
                   <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                    Google Search API key{" "}
+                    Tavily API key{" "}
                     <a
-                      href="https://developers.google.com/custom-search/v1/overview"
+                      href="https://app.tavily.com/home"
                       target="_blank"
                       rel="noreferrer"
                       className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
                     >
-                      setup <ExternalLink size={10} />
+                      get key <ExternalLink size={10} />
                     </a>
                   </label>
                   <input
                     type="password"
-                    value={s.googleSearchApiKey}
-                    onChange={(e) => s.setGoogleSearchApiKey(e.target.value)}
-                    placeholder="AIza..."
+                    value={s.tavilyApiKey}
+                    onChange={(e) => s.setTavilyApiKey(e.target.value)}
+                    placeholder="tvly-..."
                     className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
                   />
-                  <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                    Search engine ID
-                  </label>
-                  <input
-                    value={s.googleSearchEngineId}
-                    onChange={(e) => s.setGoogleSearchEngineId(e.target.value)}
-                    placeholder="Programmable Search Engine ID"
-                    className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                  />
+                  <div className="text-[11px] text-[var(--fg-muted)]">
+                    Leave blank to use `TAVILY_API_KEY`, `tavilyApiKey`, or `TAVILY_MCP_URL` from `.env.local`.
+                  </div>
                 </div>
               </section>
 
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs font-semibold text-[var(--fg)]">Local models</div>
+                    <div className="text-xs font-semibold text-[var(--fg)]">Local Ollama</div>
                     <div className="text-[11px] text-[var(--fg-muted)]">Use models installed on this machine.</div>
                   </div>
                   <StatusPill
@@ -261,7 +304,7 @@ export function SettingsDialog() {
                 </div>
 
                 <div className="space-y-2">
-                  <Toggle on={s.localEnabled} onChange={setLocalEnabled} label="Enable local models" />
+                  <Toggle on={s.localEnabled} onChange={setLocalEnabled} label="Enable local Ollama models" />
 
                   {s.localEnabled && (
                     <>
@@ -293,53 +336,6 @@ export function SettingsDialog() {
                           {localError}
                         </div>
                       )}
-                    </>
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-semibold text-[var(--fg)]">Ollama</div>
-                    <div className="text-[11px] text-[var(--fg-muted)]">Use hosted ollama.com models.</div>
-                  </div>
-                  <StatusPill
-                    label={
-                      s.cloudOllamaEnabled
-                        ? s.ollamaApiKey
-                          ? "On"
-                          : "On, key needed"
-                        : "Off"
-                    }
-                    ok={s.cloudOllamaEnabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Toggle on={s.cloudOllamaEnabled} onChange={setCloudOllamaEnabled} label="Enable Ollama models" />
-
-                  {s.cloudOllamaEnabled && (
-                    <>
-                      <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                        Ollama API URL
-                      </label>
-                      <input
-                        value={s.ollamaCloudBaseUrl}
-                        onChange={(e) => s.setOllamaCloudBaseUrl(e.target.value)}
-                        placeholder="https://ollama.com"
-                        className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                      />
-                      <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
-                        Ollama API key
-                      </label>
-                      <input
-                        type="password"
-                        value={s.ollamaApiKey}
-                        onChange={(e) => s.setOllamaApiKey(e.target.value)}
-                        placeholder="Your ollama.com API key"
-                        className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
-                      />
                     </>
                   )}
                 </div>

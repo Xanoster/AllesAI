@@ -15,7 +15,6 @@ type RequestBody = {
   messages: ChatMessage[];
   apiKey?: string;
   geminiApiKey?: string;
-  webSearch?: boolean;
   ollamaBaseUrl?: string;
   ollamaApiKey?: string;
   ollamaCloudBaseUrl?: string;
@@ -89,7 +88,7 @@ function toOllamaMessages(messages: ChatMessage[]): OllamaMessage[] {
 }
 
 // Convert OpenAI-style messages to Gemini native format
-function toGeminiBody(messages: ChatMessage[], webSearch?: boolean) {
+function toGeminiBody(messages: ChatMessage[]) {
   const systemParts: Array<{ text: string }> = [];
   const contents: Array<{
     role: string;
@@ -122,7 +121,6 @@ function toGeminiBody(messages: ChatMessage[], webSearch?: boolean) {
     ...(systemParts.length > 0 ? { system_instruction: { parts: systemParts } } : {}),
     contents,
     generationConfig: { temperature: 0.7 },
-    ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
   };
 }
 
@@ -385,7 +383,7 @@ export async function POST(req: NextRequest) {
     const upstream = await fetch(geminiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(toGeminiBody(messages, body.webSearch)),
+      body: JSON.stringify(toGeminiBody(messages)),
     }).catch((err: unknown) => {
       return new Response(`Upstream fetch failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502 });
     });

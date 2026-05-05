@@ -136,10 +136,8 @@ export type SettingsState = {
   setSystemPrompt: (s: string) => void;
   webSearch: boolean;
   setWebSearch: (v: boolean) => void;
-  googleSearchApiKey: string;
-  setGoogleSearchApiKey: (k: string) => void;
-  googleSearchEngineId: string;
-  setGoogleSearchEngineId: (id: string) => void;
+  tavilyApiKey: string;
+  setTavilyApiKey: (k: string) => void;
   compactColumns: boolean;
   setCompactColumns: (v: boolean) => void;
   consensusModel: string;
@@ -184,10 +182,8 @@ export const useSettings = create<SettingsState>()(
       setSystemPrompt: (s) => set({ systemPrompt: s }),
       webSearch: false,
       setWebSearch: (v) => set({ webSearch: v }),
-      googleSearchApiKey: "",
-      setGoogleSearchApiKey: (k) => set({ googleSearchApiKey: k }),
-      googleSearchEngineId: "",
-      setGoogleSearchEngineId: (id) => set({ googleSearchEngineId: id }),
+      tavilyApiKey: "",
+      setTavilyApiKey: (k) => set({ tavilyApiKey: k }),
       compactColumns: false,
       setCompactColumns: (v) => set({ compactColumns: v }),
       consensusModel: CONSENSUS_MODEL,
@@ -213,7 +209,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: "alles-ai-settings",
-      version: 3,
+      version: 4,
       migrate: (persistedState) => {
         const state = persistedState as Partial<SettingsState>;
         return {
@@ -223,8 +219,7 @@ export const useSettings = create<SettingsState>()(
           geminiEnabled: state.geminiEnabled ?? true,
           systemPrompt: state.systemPrompt ?? "You are a helpful, concise assistant.",
           webSearch: state.webSearch ?? false,
-          googleSearchApiKey: state.googleSearchApiKey ?? "",
-          googleSearchEngineId: state.googleSearchEngineId ?? "",
+          tavilyApiKey: state.tavilyApiKey ?? "",
           compactColumns: state.compactColumns ?? false,
           consensusModel: state.consensusModel ?? CONSENSUS_MODEL,
           saveConsensusToChat: state.saveConsensusToChat ?? false,
@@ -243,8 +238,7 @@ export const useSettings = create<SettingsState>()(
         geminiEnabled: state.geminiEnabled,
         systemPrompt: state.systemPrompt,
         webSearch: state.webSearch,
-        googleSearchApiKey: state.googleSearchApiKey,
-        googleSearchEngineId: state.googleSearchEngineId,
+        tavilyApiKey: state.tavilyApiKey,
         compactColumns: state.compactColumns,
         consensusModel: state.consensusModel,
         saveConsensusToChat: state.saveConsensusToChat,

@@ -23,6 +23,16 @@ type WebContext = {
   grounding: NonNullable<Message["grounding"]>;
 };
 
+function cleanContextText(text?: string) {
+  return (text || "").replace(/\s+/g, " ").trim();
+}
+
+function limitContextText(text: string | undefined, maxLength: number) {
+  const cleaned = cleanContextText(text);
+  if (cleaned.length <= maxLength) return cleaned;
+  return cleaned.slice(0, maxLength).replace(/\s+\S*$/, "").trim() + "...";
+}
+
 function createDraftWriter(key: string) {
   let content = "";
   let frame: number | null = null;
@@ -120,7 +130,15 @@ function toApiMessages(
     out.push({
       role: "system",
       content:
-        "Current web search results are provided below. Use them for up-to-date facts, cite the source numbers when relevant, and say when the search results do not answer the question.\n\n" +
+        [
+          "Use the private web context below as live retrieval for this turn.",
+          "Answer directly, as if you checked the web yourself.",
+          "Do not mention search results, snippets, private context, or retrieval mechanics.",
+          "Cite web-backed claims with source numbers like [1] or [2].",
+          "Prefer recent and primary sources; if sources conflict or are insufficient, say what could not be verified.",
+          "Use your own reasoning to synthesize the answer instead of summarizing sources one by one.",
+        ].join("\n") +
+        "\n\n" +
         webContext.text,
     });
   }
@@ -282,7 +300,14 @@ export async function streamModel(opts: {
 
 type SearchApiResponse = {
   query?: string;
-  results?: Array<{ title: string; uri: string; snippet?: string }>;
+  answer?: string;
+  results?: Array<{
+    title: string;
+    uri: string;
+    snippet?: string;
+    content?: string;
+    publishedDate?: string;
+  }>;
   error?: string;
 };
 
@@ -294,28 +319,39 @@ async function fetchWebContext(prompt: string, signal: AbortSignal): Promise<Web
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       query: prompt,
-      apiKey: settings.googleSearchApiKey || undefined,
-      searchEngineId: settings.googleSearchEngineId || undefined,
+      apiKey: settings.tavilyApiKey || undefined,
     }),
   });
   const data = (await res.json().catch(() => ({}))) as SearchApiResponse;
   if (!res.ok) {
-    throw new Error(data.error || `Google Custom Search failed with HTTP ${res.status}.`);
+    throw new Error(data.error || `Tavily MCP search failed with HTTP ${res.status}.`);
   }
 
   const results = data.results ?? [];
   if (results.length === 0) {
-    throw new Error("Google Custom Search returned no useful results.");
+    throw new Error("Tavily MCP returned no useful results.");
   }
 
   return {
     text: [
-      `Search query: ${data.query || prompt}`,
+      `Question: ${prompt}`,
+      `Retrieval query: ${data.query || prompt}`,
+      data.answer ? `Retrieval synthesis: ${limitContextText(data.answer, 900)}` : "",
       ...results.map(
-        (result, index) =>
-          `[${index + 1}] ${result.title}\nURL: ${result.uri}\nSnippet: ${result.snippet || "(no snippet)"}`
+        (result, index) => {
+          const lines = [
+            `[${index + 1}] ${result.title}`,
+            `URL: ${result.uri}`,
+          ];
+          if (result.publishedDate) lines.push(`Published: ${result.publishedDate}`);
+          lines.push(`Key facts: ${limitContextText(result.snippet, 700) || "(no summary)"}`);
+          if (result.content) {
+            lines.push(`Relevant excerpt: ${limitContextText(result.content, 1400)}`);
+          }
+          return lines.join("\n");
+        }
       ),
-    ].join("\n\n"),
+    ].filter(Boolean).join("\n\n"),
     grounding: {
       queries: data.query ? [data.query] : [prompt],
       sources: results.map((result) => ({ title: result.title, uri: result.uri })),

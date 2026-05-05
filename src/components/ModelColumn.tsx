@@ -191,7 +191,7 @@ function MessageBubble({
               rel="noreferrer"
               className="block truncate text-[11px] text-[var(--accent)] hover:underline"
             >
-              {s.title || s.uri}
+              [{i + 1}] {s.title || s.uri}
             </a>
           ))}
         </div>
