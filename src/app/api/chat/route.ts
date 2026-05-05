@@ -17,13 +17,14 @@ type RequestBody = {
   messages: ChatMessage[];
   apiKey?: string;
   geminiApiKey?: string;
+  webSearch?: boolean;
 };
 
 const GROQ_URL    = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 
 // Convert OpenAI-style messages to Gemini native format
-function toGeminiBody(messages: ChatMessage[]) {
+function toGeminiBody(messages: ChatMessage[], webSearch?: boolean) {
   const systemParts: Array<{ text: string }> = [];
   const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
 
@@ -45,6 +46,7 @@ function toGeminiBody(messages: ChatMessage[]) {
     ...(systemParts.length > 0 ? { system_instruction: { parts: systemParts } } : {}),
     contents,
     generationConfig: { temperature: 0.7 },
+    ...(webSearch ? { tools: [{ google_search: {} }] } : {}),
   };
 }
 
@@ -71,7 +73,7 @@ export async function POST(req: NextRequest) {
     const upstream = await fetch(geminiUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": key },
-      body: JSON.stringify(toGeminiBody(messages)),
+      body: JSON.stringify(toGeminiBody(messages, body.webSearch)),
     }).catch((err: unknown) => {
       return new Response(`Upstream fetch failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502 });
     });
@@ -105,12 +107,31 @@ export async function POST(req: NextRequest) {
               const payload = line.slice(5).trim();
               if (!payload || payload === "[DONE]") continue;
               try {
-                type GeminiChunk = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }>; }; finishReason?: string; }> };
+                type GeminiChunk = {
+                  candidates?: Array<{
+                    content?: { parts?: Array<{ text?: string }> };
+                    finishReason?: string;
+                    groundingMetadata?: {
+                      webSearchQueries?: string[];
+                      groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+                    };
+                  }>;
+                };
                 const json = JSON.parse(payload) as GeminiChunk;
                 const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
                 if (typeof text === "string" && text.length > 0) send({ type: "delta", text });
                 const finish = json?.candidates?.[0]?.finishReason;
                 if (finish && finish !== "STOP") send({ type: "finish", reason: finish });
+                const gm = json?.candidates?.[0]?.groundingMetadata;
+                if (gm) {
+                  const queries = gm.webSearchQueries ?? [];
+                  const sources = (gm.groundingChunks ?? [])
+                    .filter((c) => c.web?.uri)
+                    .map((c) => ({ title: c.web!.title ?? c.web!.uri!, uri: c.web!.uri! }));
+                  if (queries.length > 0 || sources.length > 0) {
+                    send({ type: "grounding", queries, sources });
+                  }
+                }
               } catch { /* ignore */ }
             }
           }

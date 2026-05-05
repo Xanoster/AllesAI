@@ -2,13 +2,15 @@
 
 import { useRef, useState } from "react";
 import { sendPromptToAll } from "@/lib/chat-client";
-import { useChat } from "@/lib/store";
-import { ArrowUp, Square, X } from "lucide-react";
+import { useChat, useSettings } from "@/lib/store";
+import { ArrowUp, Square, X, Globe } from "lucide-react";
 import { getModel } from "@/lib/models";
 
 export function Composer({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const setFocusedModel = useChat((s) => s.setFocusedModel);
+  const webSearch = useSettings((s) => s.webSearch);
+  const setWebSearch = useSettings((s) => s.setWebSearch);
   const [text, setText] = useState("");
   const ctrlRef = useRef<AbortController | null>(null);
 
@@ -51,6 +53,14 @@ export function Composer({ convId }: { convId: string }) {
         </div>
       )}
       <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm focus-within:border-[var(--border-strong)] focus-within:shadow-md transition">
+        <button
+          type="button"
+          onClick={() => setWebSearch(!webSearch)}
+          title={webSearch ? "Web search ON (Gemini) — click to disable" : "Enable web search (Gemini only)"}
+          className={"shrink-0 rounded-full p-1.5 transition " + (webSearch ? "text-[var(--accent)]" : "text-[var(--fg-subtle)] hover:text-[var(--fg-muted)]")}
+        >
+          <Globe size={15} />
+        </button>
         <textarea
           value={text}
           onChange={(e) => setText(e.target.value)}

@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { sendPromptToAll } from "@/lib/chat-client";
-import { useChat } from "@/lib/store";
-import { ArrowUp } from "lucide-react";
+import { useChat, useSettings } from "@/lib/store";
+import { ArrowUp, Globe } from "lucide-react";
 import { ProviderIcon } from "./ProviderIcon";
 import { getModel } from "@/lib/models";
 
@@ -11,6 +11,8 @@ import { getModel } from "@/lib/models";
 // After the first prompt, the column layout takes over.
 export function HeroComposer({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
+  const webSearch = useSettings((s) => s.webSearch);
+  const setWebSearch = useSettings((s) => s.setWebSearch);
   const [text, setText] = useState("");
 
   if (!conv) return null;
@@ -57,6 +59,14 @@ export function HeroComposer({ convId }: { convId: string }) {
         {/* Pill composer matches bottom Composer */}
         <form onSubmit={onSubmit}>
           <div className="flex items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm focus-within:border-[var(--border-strong)] focus-within:shadow-md transition">
+            <button
+              type="button"
+              onClick={() => setWebSearch(!webSearch)}
+              title={webSearch ? "Web search ON (Gemini) — click to disable" : "Enable web search (Gemini only)"}
+              className={"shrink-0 rounded-full p-1.5 transition " + (webSearch ? "text-[var(--accent)]" : "text-[var(--fg-subtle)] hover:text-[var(--fg-muted)]")}
+            >
+              <Globe size={15} />
+            </button>
             <textarea
               autoFocus
               value={text}

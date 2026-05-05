@@ -18,6 +18,7 @@ export type Message = {
   pending?: boolean;
   error?: string;
   usage?: { promptTokens?: number; completionTokens?: number; costUsd?: number };
+  grounding?: { queries: string[]; sources: Array<{ title: string; uri: string }> };
 };
 
 // Per-model thread of messages. The user prompt is mirrored across all columns.
@@ -46,6 +47,8 @@ type SettingsState = {
   setGeminiApiKey: (k: string) => void;
   systemPrompt: string;
   setSystemPrompt: (s: string) => void;
+  webSearch: boolean;
+  setWebSearch: (v: boolean) => void;
 
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -61,7 +64,8 @@ export const useSettings = create<SettingsState>()(
       setGeminiApiKey: (k) => set({ geminiApiKey: k }),
       systemPrompt: "You are a helpful, concise assistant.",
       setSystemPrompt: (s) => set({ systemPrompt: s }),
-
+      webSearch: false,
+      setWebSearch: (v) => set({ webSearch: v }),
 
       theme: "dark",
       setTheme: (t) => set({ theme: t }),

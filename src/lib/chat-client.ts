@@ -82,6 +82,7 @@ export async function streamModel(opts: {
         messages: toApiMessages(history, settings.systemPrompt),
         apiKey: settings.apiKey || undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
+        webSearch: settings.webSearch || undefined,
       }),
     });
 
@@ -105,6 +106,7 @@ export async function streamModel(opts: {
     const decoder = new TextDecoder();
     let buffer = "";
     let usage: { promptTokens?: number; completionTokens?: number; costUsd?: number } | undefined;
+    let grounding: Message["grounding"] | undefined;
 
     while (true) {
       const { value, done } = await reader.read();
@@ -130,6 +132,8 @@ export async function streamModel(opts: {
               completionTokens: u.completion_tokens,
               costUsd: typeof u.cost === "number" ? u.cost : undefined,
             };
+          } else if (evt.type === "grounding") {
+            grounding = { queries: evt.queries, sources: evt.sources };
           } else if (evt.type === "error") {
             useChat.getState().failAssistant(convId, modelId, msgId, evt.message);
             return;
@@ -140,7 +144,7 @@ export async function streamModel(opts: {
       }
     }
 
-    useChat.getState().finishAssistant(convId, modelId, msgId, { usage });
+    useChat.getState().finishAssistant(convId, modelId, msgId, { usage, grounding });
   } catch (err: unknown) {
     if ((err as { name?: string })?.name === "AbortError") {
       // Keep whatever was already streamed — just mark as no longer pending

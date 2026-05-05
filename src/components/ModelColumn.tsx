@@ -6,7 +6,7 @@ import { getModel } from "@/lib/models";
 import { PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
-import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain } from "lucide-react";
+import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain, Globe } from "lucide-react";
 import { abortModel } from "@/lib/chat-client";
 
 /** Split out <think>...</think> blocks from raw content. */
@@ -119,6 +119,24 @@ function MessageBubble({
         >
           {copied ? <Check size={13} /> : <Copy size={13} />}
         </button>
+      )}
+      {msg.grounding && msg.grounding.sources.length > 0 && (
+        <div className="mt-2 border-t border-[var(--border)] pt-2">
+          <div className="mb-1 flex items-center gap-1 text-[10px] font-medium text-[var(--fg-muted)]">
+            <Globe size={10} /> Sources
+          </div>
+          {msg.grounding.sources.slice(0, 5).map((s, i) => (
+            <a
+              key={i}
+              href={s.uri}
+              target="_blank"
+              rel="noreferrer"
+              className="block truncate text-[11px] text-[var(--accent)] hover:underline"
+            >
+              {s.title || s.uri}
+            </a>
+          ))}
+        </div>
       )}
     </div>
   );
