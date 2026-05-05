@@ -3,7 +3,6 @@ export type ProviderKey =
   | "cogito"
   | "deepseek"
   | "meta"
-  | "mistral"
   | "nvidia"
   | "qwen"
   | "gemini"
@@ -35,7 +34,6 @@ export const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   cogito:   { key: "cogito",   name: "Cogito",   color: "#6d28d9" },
   deepseek: { key: "deepseek", name: "DeepSeek", color: "#4d6bfe" },
   meta:     { key: "meta",     name: "Meta",     color: "#0082fb" },
-  mistral:  { key: "mistral",  name: "Mistral",  color: "#ff7000" },
   nvidia:   { key: "nvidia",   name: "NVIDIA",   color: "#76b900" },
   qwen:     { key: "qwen",     name: "Qwen",     color: "#6750a4" },
   gemini:   { key: "gemini",   name: "Google",   color: "#1a73e8" },
@@ -76,7 +74,6 @@ export const PROVIDER_ORDER: ProviderKey[] = [
   "cogito",
   "deepseek",
   "meta",
-  "mistral",
   "nvidia",
   "qwen",
   "gemini",

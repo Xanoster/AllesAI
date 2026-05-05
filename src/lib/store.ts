@@ -17,6 +17,7 @@ import {
   isOllamaModelId,
   type ModelInfo,
 } from "./models";
+import { isRemovedModelName } from "./model-rules";
 import type { ApiProviderKey } from "./providers";
 import { uid } from "./utils";
 
@@ -31,6 +32,7 @@ export type Message = {
   createdAt: number;
   // streaming/runtime metadata
   pending?: boolean;
+  status?: "searching" | "thinking";
   error?: string;
   responseTimeMs?: number;
   usage?: { promptTokens?: number; completionTokens?: number; costUsd?: number };
@@ -85,6 +87,10 @@ export type SettingsState = {
   setSystemPrompt: (s: string) => void;
   webSearch: boolean;
   setWebSearch: (v: boolean) => void;
+  googleSearchApiKey: string;
+  setGoogleSearchApiKey: (k: string) => void;
+  googleSearchEngineId: string;
+  setGoogleSearchEngineId: (id: string) => void;
   compactColumns: boolean;
   setCompactColumns: (v: boolean) => void;
   consensusModel: string;
@@ -129,6 +135,10 @@ export const useSettings = create<SettingsState>()(
       setSystemPrompt: (s) => set({ systemPrompt: s }),
       webSearch: false,
       setWebSearch: (v) => set({ webSearch: v }),
+      googleSearchApiKey: "",
+      setGoogleSearchApiKey: (k) => set({ googleSearchApiKey: k }),
+      googleSearchEngineId: "",
+      setGoogleSearchEngineId: (id) => set({ googleSearchEngineId: id }),
       compactColumns: false,
       setCompactColumns: (v) => set({ compactColumns: v }),
       consensusModel: CONSENSUS_MODEL,
@@ -154,7 +164,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: "alles-ai-settings",
-      version: 2,
+      version: 3,
       migrate: (persistedState) => {
         const state = persistedState as Partial<SettingsState>;
         return {
@@ -164,6 +174,8 @@ export const useSettings = create<SettingsState>()(
           geminiEnabled: state.geminiEnabled ?? true,
           systemPrompt: state.systemPrompt ?? "You are a helpful, concise assistant.",
           webSearch: state.webSearch ?? false,
+          googleSearchApiKey: state.googleSearchApiKey ?? "",
+          googleSearchEngineId: state.googleSearchEngineId ?? "",
           compactColumns: state.compactColumns ?? false,
           consensusModel: state.consensusModel ?? CONSENSUS_MODEL,
           saveConsensusToChat: state.saveConsensusToChat ?? false,
@@ -182,6 +194,8 @@ export const useSettings = create<SettingsState>()(
         geminiEnabled: state.geminiEnabled,
         systemPrompt: state.systemPrompt,
         webSearch: state.webSearch,
+        googleSearchApiKey: state.googleSearchApiKey,
+        googleSearchEngineId: state.googleSearchEngineId,
         compactColumns: state.compactColumns,
         consensusModel: state.consensusModel,
         saveConsensusToChat: state.saveConsensusToChat,
@@ -222,7 +236,9 @@ function getEnabledRoutes(settings: SettingsState): ModelInfo[] {
     ...MODEL_CATALOG,
     ...(settings.cloudOllamaEnabled ? getPresetCloudOllamaModelInfos() : []),
     ...(settings.localEnabled
-      ? settings.availableLocalModels.map((model) => getLocalOllamaModelInfo(model.name))
+      ? settings.availableLocalModels
+          .filter((model) => !isRemovedModelName(model.name))
+          .map((model) => getLocalOllamaModelInfo(model.name))
       : []),
   ].filter((route) => isApiProviderEnabled(route.apiProvider, settings));
 }
@@ -296,7 +312,13 @@ type ChatState = {
   toggleModelEnabled: (convId: string, modelId: string) => void;
   setFocusedModel: (id: string, modelId: string | null) => void;
   addUserMessage: (id: string, content: string, modelIds?: string[]) => string;
-  startAssistant: (convId: string, modelId: string) => string; // returns msg id
+  startAssistant: (convId: string, modelId: string, status?: Message["status"]) => string; // returns msg id
+  setAssistantStatus: (
+    convId: string,
+    modelId: string,
+    msgId: string,
+    status?: Message["status"]
+  ) => void;
   appendAssistant: (convId: string, modelId: string, msgId: string, delta: string) => void;
   finishAssistant: (
     convId: string,
@@ -357,7 +379,10 @@ function findLegacyModelIds(modelId: string): string[] {
 const VALID_CLOUD_MODEL_NAMES = new Set(PRESET_CLOUD_OLLAMA_MODELS.map((m) => m.name));
 
 export function normalizeModelId(modelId: string): string | null {
+  if (isRemovedModelName(modelId)) return null;
+
   const normalized = MODEL_ID_ALIASES[modelId] ?? modelId;
+  if (isRemovedModelName(normalized)) return null;
   if (isOllamaModelId(normalized)) return normalized;
   if (isCloudOllamaModelId(normalized)) {
     return VALID_CLOUD_MODEL_NAMES.has(getCloudOllamaModelName(normalized)) ? normalized : null;
@@ -650,7 +675,7 @@ export const useChat = create<ChatState>()(
         });
         return msgId;
       },
-      startAssistant: (convId, modelId) => {
+      startAssistant: (convId, modelId, status = "thinking") => {
         const msgId = uid();
         set((s) => {
           const c = s.conversations[convId];
@@ -666,6 +691,7 @@ export const useChat = create<ChatState>()(
                 content: "",
                 modelId,
                 pending: true,
+                status,
                 createdAt: Date.now(),
               },
             ],
@@ -679,6 +705,22 @@ export const useChat = create<ChatState>()(
         });
         return msgId;
       },
+      setAssistantStatus: (convId, modelId, msgId, status) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const t = c.threads[modelId];
+          if (!t) return s;
+          const messages = t.messages.map((m) =>
+            m.id === msgId ? { ...m, status } : m
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, threads: { ...c.threads, [modelId]: { ...t, messages } } },
+            },
+          };
+        }),
       appendAssistant: (convId, modelId, msgId, delta) =>
         set((s) => {
           const c = s.conversations[convId];
@@ -686,7 +728,7 @@ export const useChat = create<ChatState>()(
           const t = c.threads[modelId];
           if (!t) return s;
           const messages = t.messages.map((m) =>
-            m.id === msgId ? { ...m, content: m.content + delta } : m
+            m.id === msgId ? { ...m, content: m.content + delta, status: undefined } : m
           );
           return {
             conversations: {
@@ -707,6 +749,7 @@ export const useChat = create<ChatState>()(
               ? {
                   ...m,
                   pending: false,
+                  status: undefined,
                   responseTimeMs:
                     patch?.responseTimeMs ??
                     m.responseTimeMs ??

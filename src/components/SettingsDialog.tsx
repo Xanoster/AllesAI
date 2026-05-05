@@ -208,6 +208,49 @@ export function SettingsDialog() {
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
+                    <div className="text-xs font-semibold text-[var(--fg)]">Web search</div>
+                    <div className="text-[11px] text-[var(--fg-muted)]">Google Custom Search shared by all models.</div>
+                  </div>
+                  <StatusPill
+                    label={s.googleSearchApiKey && s.googleSearchEngineId ? "Ready" : "Setup needed"}
+                    ok={Boolean(s.googleSearchApiKey && s.googleSearchEngineId)}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
+                    Google Search API key{" "}
+                    <a
+                      href="https://developers.google.com/custom-search/v1/overview"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="ml-1 inline-flex items-center gap-0.5 text-[var(--accent)] hover:underline"
+                    >
+                      setup <ExternalLink size={10} />
+                    </a>
+                  </label>
+                  <input
+                    type="password"
+                    value={s.googleSearchApiKey}
+                    onChange={(e) => s.setGoogleSearchApiKey(e.target.value)}
+                    placeholder="AIza..."
+                    className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                  />
+                  <label className="block text-[11px] font-medium text-[var(--fg-muted)]">
+                    Search engine ID
+                  </label>
+                  <input
+                    value={s.googleSearchEngineId}
+                    onChange={(e) => s.setGoogleSearchEngineId(e.target.value)}
+                    placeholder="Programmable Search Engine ID"
+                    className="w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]"
+                  />
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div>
                     <div className="text-xs font-semibold text-[var(--fg)]">Local models</div>
                     <div className="text-[11px] text-[var(--fg-muted)]">Use models installed on this machine.</div>
                   </div>

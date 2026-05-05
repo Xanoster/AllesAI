@@ -14,6 +14,7 @@ import {
   type ModelInfo,
 } from "@/lib/models";
 import { API_PROVIDERS, PROVIDERS, type ApiProviderKey } from "@/lib/providers";
+import { isRemovedModelName } from "@/lib/model-rules";
 import {
   isApiProviderEnabled,
   useChat,
@@ -64,7 +65,9 @@ export function ModelPicker({ convId }: { convId: string }) {
 
   const localRoutes = useMemo(() => {
     if (!localEnabled) return [];
-    return availableLocalModels.map((model) => getLocalOllamaModelInfo(model.name));
+    return availableLocalModels
+      .filter((model) => !isRemovedModelName(model.name))
+      .map((model) => getLocalOllamaModelInfo(model.name));
   }, [availableLocalModels, localEnabled]);
 
   const families = useMemo(
@@ -445,6 +448,16 @@ function RouteDropdown({
                       {route.routeHint ?? route.id}
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1 text-[9px] text-[var(--fg-subtle)]">
+                      {route.free ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">free</span>
+                      ) : (
+                        <span
+                          className="text-amber-700 dark:text-amber-300"
+                          title={route.accessHint ?? "This route may require paid access."}
+                        >
+                          {route.accessLabel ?? "paid"}
+                        </span>
+                      )}
                       {route.paramSize && <span>{route.paramSize}</span>}
                       {route.bestFor && <span>{route.bestFor}</span>}
                       {unavailable && <span className="text-yellow-600 dark:text-yellow-300">{unavailable}</span>}
@@ -553,6 +566,8 @@ function matchesQuery(family: ModelFamily, rawQuery: string): boolean {
       route.id,
       route.label,
       route.bestFor,
+      route.accessLabel,
+      route.accessHint,
       route.paramSize,
       route.routeHint,
       API_PROVIDERS[route.apiProvider].name,

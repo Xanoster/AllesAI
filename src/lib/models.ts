@@ -7,6 +7,7 @@ import {
   type ApiProviderKey,
   type ProviderKey,
 } from "./providers";
+import { isRemovedModelName } from "./model-rules";
 
 export type ModelInfo = {
   id: string;
@@ -15,7 +16,9 @@ export type ModelInfo = {
   provider: ProviderKey;
   apiProvider: ApiProviderKey;
   familyId: string;
-  free: true;
+  free: boolean;
+  accessLabel?: string;
+  accessHint?: string;
   context: number;
   category: string;
   vision?: boolean;
@@ -53,6 +56,10 @@ export type CloudOllamaPreset = {
   bestFor: string;
   context: number;
   category: string;
+  free?: boolean;
+  accessLabel?: string;
+  accessHint?: string;
+  routeHint?: string;
   vision?: boolean;
   thinking?: boolean;
 };
@@ -163,18 +170,6 @@ export const PRESET_CLOUD_OLLAMA_MODELS: CloudOllamaPreset[] = [
     thinking: true,
   },
   {
-    name: "mistral-large-3:675b",
-    label: "Mistral Large 3 675B",
-    shortLabel: "Mistral Large",
-    provider: "mistral",
-    familyId: "mistral-large-3-675b",
-    paramSize: "675B",
-    bestFor: "General Q&A, reasoning",
-    context: 256000,
-    category: "General",
-    thinking: true,
-  },
-  {
     name: "nemotron-3-super",
     label: "Nemotron 3 Super",
     shortLabel: "Nemotron 3",
@@ -221,6 +216,8 @@ export function getLocalOllamaModelInfo(modelName: string): ModelInfo {
 }
 
 export function getModel(id: string): ModelInfo | undefined {
+  if (isRemovedModelName(id)) return undefined;
+
   const catalogModel = MODEL_CATALOG.find((m) => m.id === id);
   if (catalogModel) return catalogModel;
 
@@ -314,7 +311,7 @@ export const DEFAULT_SELECTED_MODELS = [
 ];
 
 // Dedicated synthesis model - not shown as a comparison column by default.
-export const CONSENSUS_MODEL = "llama-3.3-70b-versatile";
+export const CONSENSUS_MODEL = "openai/gpt-oss-120b";
 
 function cloudPresetToModel(preset: CloudOllamaPreset): ModelInfo {
   return {
@@ -324,12 +321,14 @@ function cloudPresetToModel(preset: CloudOllamaPreset): ModelInfo {
     provider: preset.provider,
     apiProvider: "ollama-cloud",
     familyId: preset.familyId,
-    free: true,
+    free: preset.free ?? true,
+    accessLabel: preset.accessLabel,
+    accessHint: preset.accessHint,
     context: preset.context,
     category: preset.category,
     vision: preset.vision,
     thinking: preset.thinking,
-    routeHint: "Ollama API",
+    routeHint: preset.routeHint ?? "Ollama API",
     bestFor: preset.bestFor,
     paramSize: preset.paramSize,
   };
@@ -485,21 +484,6 @@ function inferOllamaModel(modelName: string): Omit<ModelInfo, "id" | "apiProvide
       category: "Reasoning",
       thinking: true,
       bestFor: "Careful reasoning",
-      paramSize,
-    };
-  }
-
-  if (lower.startsWith("mistral-large")) {
-    const paramSize = size ?? "Unknown";
-    return {
-      label: `Mistral Large ${paramSize}`,
-      shortLabel: "Mistral Large",
-      provider: "mistral",
-      familyId: normalizeFamilyId(cleanName),
-      context: 256000,
-      category: "General",
-      thinking: true,
-      bestFor: "General Q&A, reasoning",
       paramSize,
     };
   }

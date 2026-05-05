@@ -68,6 +68,7 @@ function MessageBubble({
   const showCopy =
     !isUser && !msg.pending && !msg.error && !!msg.content;
   const showMeta = !isUser && !msg.pending && typeof msg.responseTimeMs === "number";
+  const pendingLabel = msg.status === "searching" ? "searching..." : "thinking...";
 
   return (
     <div
@@ -100,7 +101,7 @@ function MessageBubble({
         </div>
       ) : msg.role === "assistant" && msg.content === "" && msg.pending ? (
         <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-          <Loader2 size={14} className="animate-spin" /> thinking...
+          <Loader2 size={14} className="animate-spin" /> {pendingLabel}
         </div>
       ) : (
         (() => {
@@ -111,7 +112,7 @@ function MessageBubble({
               {answer && <Markdown source={answer} />}
               {!answer && msg.pending && (
                 <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-                  <Loader2 size={14} className="animate-spin" /> thinking...
+                  <Loader2 size={14} className="animate-spin" /> {pendingLabel}
                 </div>
               )}
             </>
@@ -378,6 +379,14 @@ export function ModelColumn({
               {info?.free && (
                 <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-emerald-600 dark:text-emerald-400">
                   free
+                </span>
+              )}
+              {info && !info.free && (
+                <span
+                  className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-amber-700 dark:text-amber-300"
+                  title={info.accessHint ?? "This route may require paid access."}
+                >
+                  {info.accessLabel ?? "paid"}
                 </span>
               )}
             </div>

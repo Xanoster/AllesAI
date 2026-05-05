@@ -1,17 +1,32 @@
 import { NextRequest } from "next/server";
+import { getModelAlias } from "@/lib/model-rules";
 
 export const runtime = "edge";
 
-const GROQ_URL   = "https://api.groq.com/openai/v1/chat/completions";
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const OLLAMA_PREFIX = "ollama/";
+const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
+const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
+const DEFAULT_CLOUD_OLLAMA_BASE_URL = "https://ollama.com";
 
-type ResponseEntry = { model: string; content: string };
+type ChatMessage = {
+  role: "system" | "user" | "assistant";
+  content: string;
+};
+
+type ResponseEntry = {
+  model: string;
+  content: string;
+};
 
 type RequestBody = {
   prompt: string;
   responses: ResponseEntry[];
-  consensusModel: string;
-  fallbackConsensusModel?: string;
+  mode?: "single" | "council";
+  consensusModel?: string;
+  candidateModels?: string[];
+  fallbackModels?: string[];
   apiKey?: string;
   geminiApiKey?: string;
   ollamaBaseUrl?: string;
@@ -19,21 +34,47 @@ type RequestBody = {
   ollamaCloudBaseUrl?: string;
 };
 
-const SYSTEM_PROMPT = `You are an expert synthesizer. You will be given a user's question and several answers from different AI models.
-Your job:
-1. Identify the points where the models agree (the consensus).
-2. Note where they disagree, and judge which is correct based on reasoning and known facts.
-3. Produce a single best, well-organized answer that combines the strongest points.
-4. Be concise. Use bullet points or short paragraphs. Do not invent facts that none of the models stated unless correcting an obvious error.
-Format:
-**Consensus**: <one-paragraph summary>
-**Best answer**: <the synthesized final answer>
-**Disagreements** (only if any): <bullet list>`;
+class UpstreamError extends Error {
+  status: number;
 
-const OLLAMA_PREFIX = "ollama/";
-const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
-const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
-const DEFAULT_CLOUD_OLLAMA_BASE_URL = "https://ollama.com";
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const SYNTHESIS_PROMPT = `You are a careful consensus synthesizer.
+Use only short model names such as Gemini 2.5, Gemma 4, Llama 4, Cogito, Nemotron, or GPT.
+Never write "Model 1", "Model 2", or full model IDs.
+Do not copy one model's full answer. Compare, summarize, decide, and explain the logic.
+
+Output exactly these sections:
+**Best answer**
+**Why this is best**
+**Agreement**
+**Disagreement**
+**Model notes**`;
+
+const COUNCIL_POSITION_PROMPT = `You are one member of a model council.
+Use your short model name when referring to yourself.
+Give a concise position: strongest answer, weak points, disagreements, and what the final synthesis should say.
+Do not produce the final answer alone.`;
+
+const COUNCIL_SYNTHESIS_PROMPT = `You are the final moderator of a model council.
+Use only short model names such as Gemini 2.5, Gemma 4, Llama 4, Cogito, Nemotron, or GPT.
+Never write "Model 1", "Model 2", or full model IDs.
+Synthesize the council positions and the original model answers. Do not copy one model's full answer.
+
+Output exactly these sections:
+**Best answer**
+**Why this is best**
+**Agreement**
+**Disagreement**
+**Model notes**`;
+
+function unique(values: Array<string | undefined>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
+}
 
 function resolveOllamaBaseUrl(raw?: string) {
   const input = (raw || DEFAULT_OLLAMA_BASE_URL).trim();
@@ -49,299 +90,255 @@ function resolveOllamaBaseUrl(raw?: string) {
   }
 }
 
-export async function POST(req: NextRequest) {
-  let body: RequestBody;
-  try {
-    body = (await req.json()) as RequestBody;
-  } catch {
-    return new Response("Invalid JSON", { status: 400 });
-  }
+function providerFor(modelId: string): "gemini" | "ollama" | "ollama-cloud" | "groq" {
+  if (modelId.startsWith("gemini")) return "gemini";
+  if (modelId.startsWith(CLOUD_OLLAMA_PREFIX)) return "ollama-cloud";
+  if (modelId.startsWith(OLLAMA_PREFIX)) return "ollama";
+  return "groq";
+}
 
-  const { prompt, responses, apiKey, geminiApiKey } = body;
-  let { consensusModel } = body;
-  if (!prompt || !Array.isArray(responses) || responses.length === 0 || !consensusModel) {
-    return new Response("Missing prompt, responses, or consensusModel", { status: 400 });
-  }
+function modelNameForProvider(modelId: string): string {
+  if (modelId.startsWith(CLOUD_OLLAMA_PREFIX)) return modelId.slice(CLOUD_OLLAMA_PREFIX.length);
+  if (modelId.startsWith(OLLAMA_PREFIX)) return modelId.slice(OLLAMA_PREFIX.length);
+  return modelId.replace(/^groq\//, "");
+}
 
-  // Resolve provider URL and key from model name
-  const fallbackModel = body.fallbackConsensusModel;
-  const wantsGroq =
-    !consensusModel.startsWith("gemini") &&
-    !consensusModel.startsWith(OLLAMA_PREFIX) &&
-    !consensusModel.startsWith(CLOUD_OLLAMA_PREFIX);
-  const hasGroqKey = Boolean(apiKey || process.env.GROQ_API_KEY);
-  if (
-    wantsGroq &&
-    !hasGroqKey &&
-    (fallbackModel?.startsWith(OLLAMA_PREFIX) || fallbackModel?.startsWith(CLOUD_OLLAMA_PREFIX))
-  ) {
-    consensusModel = fallbackModel;
-  }
+function keyFor(body: RequestBody, modelId: string): string | undefined {
+  const provider = providerFor(modelId);
+  if (provider === "gemini") return body.geminiApiKey || process.env.GEMINI_API_KEY;
+  if (provider === "groq") return body.apiKey || process.env.GROQ_API_KEY;
+  return body.ollamaApiKey || process.env.OLLAMA_API_KEY;
+}
 
-  const isGemini = consensusModel.startsWith("gemini");
-  const isOllama = consensusModel.startsWith(OLLAMA_PREFIX);
-  const isCloudOllama = consensusModel.startsWith(CLOUD_OLLAMA_PREFIX);
-
-  const upstreamUrl = GROQ_URL;
-  let key: string | undefined;
-  if (isGemini) {
-    key = geminiApiKey || process.env.GEMINI_API_KEY;
-  } else if (!isOllama && !isCloudOllama) {
-    key = apiKey || process.env.GROQ_API_KEY;
-  }
-
-  if (!isOllama && !isCloudOllama && !key) {
-    const providerName = isGemini ? "Gemini" : "Groq";
-    return new Response(`No API key. Add your ${providerName} API key in Settings.`, { status: 401 });
-  }
-
-  // Truncate each response - keep total under ~80K chars
-  const MAX_PER_RESPONSE = Math.floor(80000 / responses.length);
-  const truncated = responses.map((r) => ({
-    ...r,
-    content: r.content.length > MAX_PER_RESPONSE
-      ? r.content.slice(0, MAX_PER_RESPONSE) + "\n...[truncated]"
-      : r.content,
+function shortResponses(responses: ResponseEntry[]): ResponseEntry[] {
+  return responses.map((response) => ({
+    ...response,
+    model: getModelAlias(response.model),
   }));
+}
 
-  const userBlock = [
-    `User's question:\n${prompt}`,
+function truncateResponses(responses: ResponseEntry[]): ResponseEntry[] {
+  const maxTotalChars = 500000;
+  const maxPerResponse = Math.max(1, Math.floor(maxTotalChars / Math.max(1, responses.length)));
+  return responses.map((response) => ({
+    ...response,
+    content:
+      response.content.length > maxPerResponse
+        ? response.content.slice(0, maxPerResponse) + "\n...[truncated]"
+        : response.content,
+  }));
+}
+
+function formatResponseBlock(prompt: string, responses: ResponseEntry[]): string {
+  return [
+    `User question:\n${prompt}`,
     "",
     "Model answers:",
-    ...truncated.map(
-      (r, i) => `\n--- Model ${i + 1} (${r.model}) ---\n${r.content || "(empty)"}`
+    ...truncateResponses(shortResponses(responses)).map(
+      (response) => `\n--- ${response.model} ---\n${response.content || "(empty)"}`
     ),
   ].join("\n");
+}
 
-  const encoder = new TextEncoder();
+function toGeminiBody(messages: ChatMessage[]) {
+  const systemParts: Array<{ text: string }> = [];
+  const contents: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }> = [];
 
-  if (isOllama || isCloudOllama) {
+  for (const message of messages) {
+    if (message.role === "system") {
+      if (message.content) systemParts.push({ text: message.content });
+    } else {
+      contents.push({
+        role: message.role === "assistant" ? "model" : "user",
+        parts: [{ text: message.content }],
+      });
+    }
+  }
+
+  return {
+    ...(systemParts.length > 0 ? { system_instruction: { parts: systemParts } } : {}),
+    contents,
+    generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
+  };
+}
+
+async function readError(upstream: Response, fallback: string): Promise<string> {
+  const raw = await upstream.text().catch(() => fallback);
+  if (!raw) return fallback;
+  try {
+    const json = JSON.parse(raw);
+    if (typeof json?.error === "string") return json.error;
+    if (typeof json?.error?.message === "string") return json.error.message;
+    if (typeof json?.message === "string") return json.message;
+  } catch {
+    // keep raw text
+  }
+  return raw;
+}
+
+async function fetchUpstream(body: RequestBody, modelId: string, messages: ChatMessage[], stream: boolean) {
+  const provider = providerFor(modelId);
+  const model = modelNameForProvider(modelId);
+
+  if (provider === "gemini") {
+    const key = keyFor(body, modelId);
+    if (!key) throw new UpstreamError("No API key. Add your Gemini API key in Settings.", 401);
+    const endpoint = stream ? "streamGenerateContent?alt=sse" : "generateContent";
+    return fetch(`${GEMINI_BASE}/${model}:${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-goog-api-key": key },
+      body: JSON.stringify(toGeminiBody(messages)),
+    }).catch((err: unknown) => {
+      throw new UpstreamError(`Gemini API is unreachable. ${err instanceof Error ? err.message : String(err)}`, 502);
+    });
+  }
+
+  if (provider === "ollama" || provider === "ollama-cloud") {
     const baseUrl = resolveOllamaBaseUrl(
-      isCloudOllama
+      provider === "ollama-cloud"
         ? body.ollamaCloudBaseUrl || DEFAULT_CLOUD_OLLAMA_BASE_URL
         : body.ollamaBaseUrl
     );
-    if (!baseUrl) return new Response(isCloudOllama ? "Invalid Ollama API base URL." : "Invalid Ollama base URL.", { status: 400 });
-
-    const prefix = isCloudOllama ? CLOUD_OLLAMA_PREFIX : OLLAMA_PREFIX;
-    const ollamaModel = consensusModel.slice(prefix.length);
-    if (!ollamaModel) return new Response("Missing Ollama model name.", { status: 400 });
-
-    const ollamaKey = body.ollamaApiKey || process.env.OLLAMA_API_KEY;
-    if (isCloudOllama && !ollamaKey) {
-      return new Response("No Ollama API key. Add OLLAMA_API_KEY to .env.local or Settings.", { status: 401 });
+    if (!baseUrl) {
+      throw new UpstreamError(provider === "ollama-cloud" ? "Invalid Ollama API base URL." : "Invalid Ollama base URL.", 400);
     }
 
-    const upstream = await fetch(`${baseUrl}/api/chat`, {
+    const key = keyFor(body, modelId);
+    if (provider === "ollama-cloud" && !key) {
+      throw new UpstreamError("No Ollama API key. Add OLLAMA_API_KEY to .env.local or Settings.", 401);
+    }
+
+    return fetch(`${baseUrl}/api/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(ollamaKey ? { Authorization: `Bearer ${ollamaKey}` } : {}),
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
       },
-      body: JSON.stringify({
-        model: ollamaModel,
-        stream: true,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userBlock },
-        ],
-      }),
+      body: JSON.stringify({ model, messages, stream }),
     }).catch((err: unknown) => {
-      return new Response(
-        `${isCloudOllama ? "Ollama API" : "Ollama"} is not reachable at ${baseUrl}. ${err instanceof Error ? err.message : String(err)}`,
-        { status: 502 }
-      );
-    });
-
-    if (upstream instanceof Response && upstream.status !== 200) {
-      const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
-      return new Response(errBody || `${isCloudOllama ? "Ollama API" : "Ollama"} returned HTTP ${upstream.status}`, { status: upstream.status });
-    }
-    if (!(upstream instanceof Response) || !upstream.body) return new Response("No upstream body", { status: 502 });
-
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = upstream.body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        let doneSent = false;
-        const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
-
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let idx: number;
-            while ((idx = buffer.indexOf("\n")) >= 0) {
-              const line = buffer.slice(0, idx).trim();
-              buffer = buffer.slice(idx + 1);
-              if (!line) continue;
-              try {
-                type OllamaChunk = {
-                  message?: { content?: string };
-                  done?: boolean;
-                  done_reason?: string;
-                };
-                const json = JSON.parse(line) as OllamaChunk;
-                const delta = json.message?.content;
-                if (typeof delta === "string" && delta.length > 0) send({ type: "delta", text: delta });
-                if (json.done) {
-                  if (json.done_reason) send({ type: "finish", reason: json.done_reason });
-                  send({ type: "done" });
-                  doneSent = true;
-                }
-              } catch {
-                // ignore malformed stream lines
-              }
-            }
-          }
-        } catch (err: unknown) {
-          send({ type: "error", message: err instanceof Error ? err.message : String(err) });
-        } finally {
-          if (!doneSent) send({ type: "done" });
-          controller.close();
-        }
-      },
-    });
-
-    return new Response(stream, {
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform" },
+      throw new UpstreamError(`${provider === "ollama-cloud" ? "Ollama API" : "Ollama"} is unreachable. ${err instanceof Error ? err.message : String(err)}`, 502);
     });
   }
 
-  // Gemini native API path.
-  if (isGemini) {
-    const geminiKey = key;
-    if (!geminiKey) return new Response("No API key. Add your Gemini API key in Settings.", { status: 401 });
-
-    const geminiUrl = `${GEMINI_BASE}/${consensusModel}:streamGenerateContent?alt=sse`;
-    const upstream = await fetch(geminiUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": geminiKey },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
-        contents: [{ role: "user", parts: [{ text: userBlock }] }],
-        generationConfig: { temperature: 0.3, maxOutputTokens: 4096 },
-      }),
-    }).catch((err: unknown) => {
-      return new Response(`Upstream fetch failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502 });
-    });
-
-    if (upstream instanceof Response && upstream.status !== 200) {
-      const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
-      return new Response(errBody, { status: upstream.status });
-    }
-    if (!(upstream instanceof Response) || !upstream.body) return new Response("No upstream body", { status: 502 });
-
-    const stream = new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = (upstream as Response).body!.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-        const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
-        try {
-          while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            let idx: number;
-            while ((idx = buffer.indexOf("\n")) >= 0) {
-              const line = buffer.slice(0, idx).trim();
-              buffer = buffer.slice(idx + 1);
-              if (!line || !line.startsWith("data:")) continue;
-              const payload = line.slice(5).trim();
-              if (!payload) continue;
-              try {
-                type GeminiChunk = { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
-                const json = JSON.parse(payload) as GeminiChunk;
-                const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (typeof text === "string" && text.length > 0) send({ type: "delta", text });
-              } catch { /* ignore */ }
-            }
-          }
-        } catch (err: unknown) {
-          send({ type: "error", message: err instanceof Error ? err.message : String(err) });
-        } finally {
-          send({ type: "done" });
-          controller.close();
-        }
-      },
-    });
-    return new Response(stream, {
-      headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no" },
-    });
-  }
-
-  // OpenAI-compatible path (Groq).
-  const upstream = await fetch(upstreamUrl, {
+  const key = keyFor(body, modelId);
+  if (!key) throw new UpstreamError("No API key. Add your Groq API key in Settings.", 401);
+  return fetch(GROQ_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
     body: JSON.stringify({
-      model: consensusModel,
+      model,
+      messages,
       temperature: 0.3,
-      max_tokens: 4096,
-      stream: true,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: userBlock },
-      ],
+      max_tokens: stream ? 4096 : 1200,
+      stream,
     }),
   }).catch((err: unknown) => {
-    return new Response(`Upstream fetch failed: ${err instanceof Error ? err.message : String(err)}`, { status: 502 });
+    throw new UpstreamError(`Groq API is unreachable. ${err instanceof Error ? err.message : String(err)}`, 502);
   });
+}
 
-  if (upstream instanceof Response && upstream.status !== 200) {
-    const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
-    if (upstream.status === 413) return new Response("Responses too large for consensus - try shorter conversations.", { status: 413 });
-    return new Response(errBody, { status: upstream.status });
-  }
-  if (!(upstream instanceof Response) || !upstream.body) {
-    return new Response("No upstream body", { status: 502 });
+async function generateText(body: RequestBody, modelId: string, messages: ChatMessage[]): Promise<string> {
+  const upstream = await fetchUpstream(body, modelId, messages, false);
+  if (upstream.status !== 200) {
+    throw new UpstreamError(await readError(upstream, `${getModelAlias(modelId)} returned HTTP ${upstream.status}`), upstream.status);
   }
 
-  // Re-emit as NDJSON identical to /api/chat for client reuse
+  const provider = providerFor(modelId);
+  const json = await upstream.json().catch(() => ({}));
+  if (provider === "gemini") {
+    return (json?.candidates?.[0]?.content?.parts ?? [])
+      .map((part: { text?: string }) => part.text ?? "")
+      .join("")
+      .trim();
+  }
+  if (provider === "ollama" || provider === "ollama-cloud") {
+    return String(json?.message?.content ?? "").trim();
+  }
+  return String(json?.choices?.[0]?.message?.content ?? "").trim();
+}
+
+async function streamText(body: RequestBody, modelId: string, messages: ChatMessage[]): Promise<Response> {
+  const upstream = await fetchUpstream(body, modelId, messages, true);
+  if (upstream.status !== 200) {
+    if (upstream.status === 413) {
+      throw new UpstreamError("Responses too large for consensus - try shorter conversations.", 413);
+    }
+    throw new UpstreamError(await readError(upstream, `${getModelAlias(modelId)} returned HTTP ${upstream.status}`), upstream.status);
+  }
+  if (!upstream.body) throw new UpstreamError("No upstream body", 502);
+
+  const provider = providerFor(modelId);
+  const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       const reader = upstream.body!.getReader();
       const decoder = new TextDecoder();
-      const encoder = new TextEncoder();
-      let buf = "";
-      const send = (obj: unknown) =>
-        controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      let buffer = "";
+      let doneSent = false;
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
       try {
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
-          buf += decoder.decode(value, { stream: true });
-
+          buffer += decoder.decode(value, { stream: true });
           let idx: number;
-          while ((idx = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, idx).trim();
-            buf = buf.slice(idx + 1);
-            if (!line || !line.startsWith("data:")) continue;
-            const data = line.slice(5).trim();
-            if (data === "[DONE]") {
-              send({ type: "done" });
-              continue;
-            }
+          while ((idx = buffer.indexOf("\n")) >= 0) {
+            const line = buffer.slice(0, idx).trim();
+            buffer = buffer.slice(idx + 1);
+            if (!line) continue;
+
             try {
-              const json = JSON.parse(data);
-              const delta: string | undefined = json.choices?.[0]?.delta?.content;
-              if (delta) send({ type: "delta", text: delta });
-              if (json.usage) send({ type: "usage", usage: json.usage });
-              const finish = json.choices?.[0]?.finish_reason;
-              if (finish) send({ type: "finish", reason: finish });
+              if (provider === "ollama" || provider === "ollama-cloud") {
+                const json = JSON.parse(line) as {
+                  message?: { content?: string };
+                  done?: boolean;
+                  done_reason?: string;
+                  prompt_eval_count?: number;
+                  eval_count?: number;
+                };
+                const delta = json.message?.content;
+                if (delta) send({ type: "delta", text: delta });
+                if (json.done) {
+                  if (typeof json.prompt_eval_count === "number" || typeof json.eval_count === "number") {
+                    send({ type: "usage", usage: { prompt_tokens: json.prompt_eval_count, completion_tokens: json.eval_count } });
+                  }
+                  if (json.done_reason) send({ type: "finish", reason: json.done_reason });
+                  send({ type: "done" });
+                  doneSent = true;
+                }
+                continue;
+              }
+
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (!payload) continue;
+              if (payload === "[DONE]") {
+                send({ type: "done" });
+                doneSent = true;
+                continue;
+              }
+
+              const json = JSON.parse(payload);
+              if (provider === "gemini") {
+                const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (text) send({ type: "delta", text });
+              } else {
+                const delta = json?.choices?.[0]?.delta?.content;
+                if (delta) send({ type: "delta", text: delta });
+                if (json?.usage) send({ type: "usage", usage: json.usage });
+                const finish = json?.choices?.[0]?.finish_reason;
+                if (finish) send({ type: "finish", reason: finish });
+              }
             } catch {
-              // skip malformed
+              // ignore malformed stream lines
             }
           }
         }
       } catch (err: unknown) {
         send({ type: "error", message: err instanceof Error ? err.message : String(err) });
       } finally {
-        send({ type: "done" });
+        if (!doneSent) send({ type: "done" });
         controller.close();
       }
     },
@@ -351,6 +348,120 @@ export async function POST(req: NextRequest) {
     headers: {
       "Content-Type": "application/x-ndjson; charset=utf-8",
       "Cache-Control": "no-cache, no-transform",
+      "X-Accel-Buffering": "no",
     },
   });
+}
+
+function synthesisMessages(body: RequestBody): ChatMessage[] {
+  return [
+    { role: "system", content: SYNTHESIS_PROMPT },
+    { role: "user", content: formatResponseBlock(body.prompt, body.responses) },
+  ];
+}
+
+async function runSingle(body: RequestBody): Promise<Response> {
+  const models = unique([body.consensusModel, ...(body.fallbackModels ?? [])]);
+  if (models.length === 0) throw new UpstreamError("Missing consensusModel", 400);
+
+  let lastError: UpstreamError | null = null;
+  for (const model of models) {
+    try {
+      return await streamText(body, model, synthesisMessages(body));
+    } catch (err) {
+      lastError = err instanceof UpstreamError ? err : new UpstreamError(err instanceof Error ? err.message : String(err), 502);
+    }
+  }
+
+  throw lastError ?? new UpstreamError("Consensus failed.", 502);
+}
+
+async function runCouncil(body: RequestBody): Promise<Response> {
+  const candidates = unique(body.candidateModels ?? []);
+  const fallbacks = unique(body.fallbackModels ?? []);
+  if (candidates.length < 2) throw new UpstreamError("Model council needs at least two available models.", 400);
+
+  const fallbackQueue = [...fallbacks];
+  const notes: Array<{ modelId: string; alias: string; content: string }> = [];
+  const baseBlock = formatResponseBlock(body.prompt, body.responses);
+
+  async function tryPosition(modelId: string) {
+    const alias = getModelAlias(modelId);
+    const content = await generateText(body, modelId, [
+      { role: "system", content: COUNCIL_POSITION_PROMPT },
+      {
+        role: "user",
+        content:
+          `You are ${alias}.\n\n${baseBlock}\n\n` +
+          `Respond as ${alias}. Keep it concise and name agreements/disagreements using short model names only.`,
+      },
+    ]);
+    if (!content) throw new UpstreamError(`${alias} returned an empty council note.`, 502);
+    return { modelId, alias, content };
+  }
+
+  for (const candidate of candidates) {
+    try {
+      notes.push(await tryPosition(candidate));
+      continue;
+    } catch {
+      // Replace failed council member with the next fallback, if any.
+    }
+
+    while (fallbackQueue.length > 0) {
+      const fallback = fallbackQueue.shift()!;
+      if (notes.some((note) => note.modelId === fallback) || candidates.includes(fallback)) continue;
+      try {
+        notes.push(await tryPosition(fallback));
+        break;
+      } catch {
+        // Try the next fallback.
+      }
+    }
+  }
+
+  if (notes.length < 2) {
+    throw new UpstreamError("Model council needs at least two working models.", 502);
+  }
+
+  const councilBlock = [
+    baseBlock,
+    "",
+    "Council positions:",
+    ...notes.map((note) => `\n--- ${note.alias} ---\n${note.content}`),
+  ].join("\n");
+
+  let lastError: UpstreamError | null = null;
+  for (const note of notes) {
+    try {
+      return await streamText(body, note.modelId, [
+        { role: "system", content: COUNCIL_SYNTHESIS_PROMPT },
+        { role: "user", content: councilBlock },
+      ]);
+    } catch (err) {
+      lastError = err instanceof UpstreamError ? err : new UpstreamError(err instanceof Error ? err.message : String(err), 502);
+    }
+  }
+
+  throw lastError ?? new UpstreamError("Model council synthesis failed.", 502);
+}
+
+export async function POST(req: NextRequest) {
+  let body: RequestBody;
+  try {
+    body = (await req.json()) as RequestBody;
+  } catch {
+    return new Response("Invalid JSON", { status: 400 });
+  }
+
+  if (!body.prompt || !Array.isArray(body.responses) || body.responses.length === 0) {
+    return new Response("Missing prompt or responses", { status: 400 });
+  }
+
+  try {
+    return body.mode === "council" ? await runCouncil(body) : await runSingle(body);
+  } catch (err) {
+    const error = err instanceof UpstreamError ? err : new UpstreamError(err instanceof Error ? err.message : String(err), 502);
+    return new Response(error.message, { status: error.status });
+  }
 }

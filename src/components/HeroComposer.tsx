@@ -74,7 +74,7 @@ export function HeroComposer({ convId }: { convId: string }) {
             <button
               type="button"
               onClick={() => setWebSearch(!webSearch)}
-              title={webSearch ? "Web search ON (Gemini) - click to disable" : "Enable web search (Gemini only)"}
+              title={webSearch ? "Web search ON - click to disable" : "Enable web search for all models"}
               className={
                 "shrink-0 rounded-full p-1.5 transition " +
                 (webSearch ? "text-[var(--accent)]" : "text-[var(--fg-subtle)] hover:text-[var(--fg-muted)]")

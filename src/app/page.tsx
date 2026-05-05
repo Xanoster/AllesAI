@@ -35,6 +35,9 @@ export default function Home() {
   const groqEnabled = useSettings((s) => s.groqEnabled);
   const geminiApiKey = useSettings((s) => s.geminiApiKey);
   const geminiEnabled = useSettings((s) => s.geminiEnabled);
+  const webSearch = useSettings((s) => s.webSearch);
+  const googleSearchApiKey = useSettings((s) => s.googleSearchApiKey);
+  const googleSearchEngineId = useSettings((s) => s.googleSearchEngineId);
   const ollamaApiKey = useSettings((s) => s.ollamaApiKey);
   const localEnabled = useSettings((s) => s.localEnabled);
   const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
@@ -113,6 +116,9 @@ export default function Home() {
   const setupNeeds = [
     needsGroqKey ? "Groq API key" : null,
     needsGeminiKey ? "Gemini API key" : null,
+    webSearch && (!googleSearchApiKey || !googleSearchEngineId)
+      ? "Google Search API key and search engine ID"
+      : null,
     needsLocalOllama ? "enable Local Ollama" : null,
     needsCloudOllama
       ? cloudOllamaEnabled

@@ -1,6 +1,6 @@
 # Alles AI - Compare LLMs side-by-side
 
-**Alles AI** sends a single prompt to multiple free AI models and streams their responses **side-by-side** in real time.
+**Alles AI** sends a single prompt to multiple free or BYOK AI routes and streams their responses **side-by-side** in real time.
 
 ![status](https://img.shields.io/badge/status-active-brightgreen)
 ![next](https://img.shields.io/badge/Next.js-16-black)
@@ -14,10 +14,10 @@
 | Llama 4 Scout 17B | Groq | Local Ollama if installed | 128K | Vision |
 | Qwen3 32B | Groq | Local Ollama if installed | 128K | General |
 | Gemini 2.5 Flash Lite | Google Gemini API | - | 1M | Vision |
-| Cogito 2.1 671B, Gemma 4 31B, Mistral Large 3 675B, Nemotron 3 Super | Ollama | Local Ollama if installed | varies | Optional hosted Q&A/reasoning models |
+| Cogito 2.1 671B, Gemma 4 31B, Nemotron 3 Super | Ollama | Local Ollama if installed | varies | Optional hosted Q&A/reasoning models |
 
-All models are **free**. Groq models require a [Groq API key](https://console.groq.com). Gemini requires a [Google AI Studio key](https://aistudio.google.com/api-keys).
-Optional hosted Ollama models require an Ollama API key. Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.
+Core Groq and Gemini routes are available on free API tiers with your own key. Groq models require a [Groq API key](https://console.groq.com). Gemini requires a [Google AI Studio key](https://aistudio.google.com/api-keys).
+Optional hosted Ollama models require an Ollama API key, and some hosted models require an Ollama subscription. Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.
 
 ## Features
 
@@ -32,7 +32,8 @@ Optional hosted Ollama models require an Ollama API key. Optional local models c
 - **Provider toggles** - show only the APIs you want to use
 - **Optional local Ollama models** - refresh installed local models and compare them beside hosted APIs
 - **Optional Ollama models** - compare hosted ollama.com models without adding duplicate columns for the same model family
-- **Consensus answer** - synthesizes all model responses into one best answer using Groq or a selected local model
+- **Shared web search** - Google Custom Search runs once per prompt and gives every selected model the same current source context
+- **Quality consensus answer** - synthesizes model responses with GPT-OSS 120B via Groq
 - **Thinking block** - collapsible `<think>` reasoning display for models that support it
 - **Markdown + syntax highlighting** for code-heavy responses
 - **Persistent history** in `localStorage` - full conversation sidebar with search and delete confirmation
@@ -48,6 +49,7 @@ Optional hosted Ollama models require an Ollama API key. Optional local models c
 - **react-markdown** + **remark-gfm** + **rehype-highlight** for rendering
 - **Groq** chat completions API (OpenAI-compatible, SSE -> NDJSON proxy)
 - **Google Gemini** native streaming API (SSE -> NDJSON proxy)
+- **Google Custom Search JSON API** for shared real-time web context
 - **Ollama** local chat API (NDJSON to NDJSON proxy)
 
 ## Quick start
@@ -71,6 +73,8 @@ Create `.env.local` in the `app/` folder:
 GROQ_API_KEY=gsk_...
 GEMINI_API_KEY=AIza...
 OLLAMA_API_KEY=ollama_...
+GOOGLE_SEARCH_API_KEY=AIza...
+GOOGLE_CSE_ID=...
 ```
 
 If set, these act as fallback keys so visitors do not need their own. Client-provided keys from Settings always take priority.
@@ -81,16 +85,19 @@ If set, these act as fallback keys so visitors do not need their own. Client-pro
 Browser (Next.js page)
   |-- Zustand store (conversations, threads, settings) -> localStorage
   `-- For each selected model:
+        POST /api/search ------------------------------> Google Custom Search JSON API
+                       <-------------------------------- shared source context
         POST /api/chat  --------------------------------> Groq / Gemini / local Ollama / Ollama API
                        <-------------------------------- NDJSON (delta | usage | done | error)
 
   Consensus:
-        POST /api/consensus ---------------------------> Groq or selected Ollama model
+        POST /api/consensus ---------------------------> Groq / GPT-OSS 120B
                             <-------------------------- NDJSON (delta | done)
 ```
 
 - `/api/chat` - routes to Groq, Gemini, local Ollama, or the Ollama API based on model ID prefix
-- `/api/consensus` - takes all model responses, synthesizes a best answer via Groq or a selected Ollama model
+- `/api/search` - gets shared web results from Google Custom Search when web search is enabled
+- `/api/consensus` - takes all model responses, synthesizes a best answer via the configured consensus model
 - `/api/ollama/models` - lists installed Ollama models from the configured local base URL
 
 ## Project structure
@@ -104,6 +111,7 @@ src/
     api/
       chat/route.ts       # Streaming proxy -> Groq / Gemini / Ollama
       consensus/route.ts  # Consensus synthesis endpoint
+      search/route.ts     # Google Custom Search proxy
       ollama/models/      # Installed local model discovery
   components/
     Composer.tsx          # Bottom chat input bar

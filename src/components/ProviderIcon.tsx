@@ -36,7 +36,6 @@ const LETTERS: Record<ProviderKey, string> = {
   cogito:   "C",
   deepseek: "D",
   meta:     "M",
-  mistral:  "M",
   nvidia:   "N",
   qwen:     "Q",
   gemini:   "G",
