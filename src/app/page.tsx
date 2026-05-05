@@ -153,12 +153,16 @@ export default function Home() {
                   ? visibleFocusedModel
                     ? "- Focused on 1 model"
                     : `- ${visibleSelectedModels.length} model${visibleSelectedModels.length === 1 ? "" : "s"}`
-                  : ""}
+                : ""}
               </span>
             </div>
-            {conv && <SynthesisHistoryButton convId={conv.id} />}
           </div>
           <div className="flex items-center gap-2">
+            {conv && (
+              <div className="hidden md:block">
+                <SynthesisHistoryButton convId={conv.id} />
+              </div>
+            )}
             {conv && <ModelPicker convId={conv.id} />}
             {conv && (
               <div className="md:hidden">

@@ -6,7 +6,6 @@ import {
   ChevronDown,
   ChevronRight,
   CheckCircle2,
-  History,
   Loader2,
   Sparkles,
   Users,
@@ -61,14 +60,26 @@ export function SynthesisHistoryButton({
         type="button"
         onClick={() => setOpen((value) => !value)}
         className={
-          "relative inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--fg)] transition hover:border-[var(--border-strong)] hover:bg-[var(--bg)] " +
-          (compact ? "px-2 py-1.5" : "px-2.5 py-1.5")
+          "relative inline-flex h-9 items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--fg)] shadow-sm transition hover:bg-[var(--bg)] hover:shadow-md " +
+          (open ? "ring-2 ring-[var(--accent)]/25 " : "") +
+          (compact ? "px-2.5" : "px-3")
         }
-        title="Consensus and council results"
+        title="Consensus and council results for this chat"
+        aria-label="Open consensus and council results for this chat"
       >
-        <History size={14} />
-        {!compact && <span>Results</span>}
-        <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 text-[9px] leading-none text-[var(--accent-fg)]">
+        <span className="relative inline-flex h-5 w-5 items-center justify-center rounded-full bg-[var(--accent)] text-[var(--accent-fg)]">
+          <Sparkles size={12} />
+          <Users size={9} className="absolute -bottom-0.5 -right-0.5 rounded-full bg-[var(--bg-elevated)] p-px text-[var(--accent)]" />
+        </span>
+        {!compact && (
+          <span className="flex flex-col items-start leading-none">
+            <span>Results</span>
+            <span className="mt-0.5 text-[9px] font-medium text-[var(--fg-muted)]">
+              Consensus & council
+            </span>
+          </span>
+        )}
+        <span className="rounded-full border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5 text-[9px] leading-none text-[var(--fg-muted)]">
           {results.length}
         </span>
       </button>
