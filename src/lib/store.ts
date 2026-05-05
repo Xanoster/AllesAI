@@ -377,7 +377,7 @@ export const useChat = create<ChatState>()(
     }),
     {
       name: "alles-ai-chats",
-      version: 2,
+      version: 3,
       migrate: (persistedState) => {
         const state = persistedState as Partial<ChatState> | undefined;
         const conversations = Object.fromEntries(
@@ -387,9 +387,18 @@ export const useChat = create<ChatState>()(
           ])
         );
 
+        const lastUsedModels = Array.from(
+          new Set(
+            (state?.lastUsedModels ?? [])
+              .map(normalizeModelId)
+              .filter((modelId): modelId is string => Boolean(modelId))
+          )
+        );
+
         return {
           ...state,
           conversations,
+          lastUsedModels: lastUsedModels.length > 0 ? lastUsedModels : DEFAULT_SELECTED_MODELS,
           activeId:
             state?.activeId && conversations[state.activeId]
               ? state.activeId
