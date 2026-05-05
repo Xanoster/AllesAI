@@ -13,9 +13,9 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Alles AI · Compare LLMs side-by-side",
+  title: "Alles AI - Compare LLMs side-by-side",
   description:
-    "Alles AI: Send one prompt to multiple AI models (GPT-4o, Claude, Gemini, Llama, DeepSeek, etc.) and compare responses side-by-side. BYOK via OpenRouter.",
+    "Alles AI: Send one prompt to free Groq, Gemini, and optional local Ollama models, then compare responses side-by-side. BYOK-first and desktop-first.",
   icons: { icon: "/AllesAI.png" },
 };
 

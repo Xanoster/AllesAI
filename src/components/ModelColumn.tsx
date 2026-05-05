@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { useChat, type Message } from "@/lib/store";
+import { useChat, useSettings, type Message } from "@/lib/store";
 import { getModel } from "@/lib/models";
 import { PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
 import { ProviderIcon } from "./ProviderIcon";
-import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain, Globe } from "lucide-react";
-import { abortModel } from "@/lib/chat-client";
+import { AlertCircle, Loader2, Focus, Square, Copy, Check, GripVertical, ChevronDown, ChevronRight, Brain, Globe, RotateCcw } from "lucide-react";
+import { abortModel, streamModel } from "@/lib/chat-client";
 
 /** Split out <think>...</think> blocks from raw content. */
 function parseThinking(content: string): { thinking: string; answer: string } {
@@ -45,8 +45,12 @@ function ThinkingBlock({ text }: { text: string }) {
 
 function MessageBubble({
   msg,
+  compact,
+  onRetry,
 }: {
   msg: Message;
+  compact: boolean;
+  onRetry: () => void;
 }) {
   const isUser = msg.role === "user";
   const [copied, setCopied] = useState(false);
@@ -67,19 +71,12 @@ function MessageBubble({
   return (
     <div
       data-role={msg.role}
-      className="group relative rounded-lg border px-3 py-2 text-sm"
+      className={"group relative rounded-lg border text-sm " + (compact ? "px-2.5 py-1.5" : "px-3 py-2")}
       style={{
         background: isUser ? "var(--user-bubble)" : "var(--asst-bubble)",
         borderColor: isUser ? "var(--user-border)" : "var(--asst-border)",
       }}
     >
-      {msg.imageDataUrl && (
-        <img
-          src={msg.imageDataUrl}
-          alt="attached"
-          className="mb-2 max-h-48 rounded border border-[var(--border)]"
-        />
-      )}
       {msg.error === "Stopped" ? (
         <>
           {msg.content && <Markdown source={msg.content} />}
@@ -88,12 +85,21 @@ function MessageBubble({
           </div>
         </>
       ) : msg.error ? (
-        <div className="flex items-center gap-2 text-[var(--error)]">
-          <AlertCircle size={14} /> {msg.error}
+        <div className="space-y-2 text-[var(--error)]">
+          <div className="flex items-center gap-2">
+            <AlertCircle size={14} /> {msg.error}
+          </div>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="inline-flex items-center gap-1 rounded border border-[var(--error)]/40 px-2 py-1 text-[11px] hover:bg-[var(--bg-soft)]"
+          >
+            <RotateCcw size={11} /> Retry
+          </button>
         </div>
       ) : msg.role === "assistant" && msg.content === "" && msg.pending ? (
         <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-          <Loader2 size={14} className="animate-spin" /> thinking…
+          <Loader2 size={14} className="animate-spin" /> thinking...
         </div>
       ) : (
         (() => {
@@ -104,7 +110,7 @@ function MessageBubble({
               {answer && <Markdown source={answer} />}
               {!answer && msg.pending && (
                 <div className="flex items-center gap-2 text-[var(--fg-muted)]">
-                  <Loader2 size={14} className="animate-spin" /> thinking…
+                  <Loader2 size={14} className="animate-spin" /> thinking...
                 </div>
               )}
             </>
@@ -160,17 +166,18 @@ export function ModelColumn({
   const conv = useChat((s) => s.conversations[convId]);
   const setFocusedModel = useChat((s) => s.setFocusedModel);
   const toggleModelEnabled = useChat((s) => s.toggleModelEnabled);
+  const compact = useSettings((s) => s.compactColumns);
   const info = getModel(modelId);
   const thread = conv?.threads[modelId];
-  if (!conv || !thread) return null;
 
-  const isDisabled = (conv.disabledModels ?? []).includes(modelId);
-  const isPending = thread.messages.some((m) => m.role === "assistant" && m.pending);
+  const isDisabled = (conv?.disabledModels ?? []).includes(modelId);
+  const isPending = thread?.messages.some((m) => m.role === "assistant" && m.pending) ?? false;
 
-  const isFocused = conv.focusedModel === modelId;
-  const isOtherFocused = !!conv.focusedModel && !isFocused;
+  const isFocused = conv?.focusedModel === modelId;
+  const isOtherFocused = !!conv?.focusedModel && !isFocused;
 
   const toggleFocus = () => {
+    if (!conv) return;
     setFocusedModel(convId, isFocused ? null : modelId);
   };
 
@@ -180,6 +187,7 @@ export function ModelColumn({
 
   // Toggle = on/off + collapse/expand merged into one action
   const handleToggle = () => {
+    if (!conv) return;
     toggleModelEnabled(convId, modelId);
   };
 
@@ -190,15 +198,21 @@ export function ModelColumn({
   const prevConvId = useRef<string>(convId);
 
   // Find the ID of the latest user message
-  const latestUserMsg = [...thread.messages].reverse().find((m) => m.role === "user");
+  const latestUserMsg = thread ? [...thread.messages].reverse().find((m) => m.role === "user") : undefined;
   const latestUserMsgId = latestUserMsg?.id ?? null;
+  const canRegenerate = Boolean(latestUserMsg) && !isPending;
+  const regenerate = () => {
+    if (!canRegenerate) return;
+    void streamModel({ convId, modelId });
+  };
 
   // Initialize with the current latest user message ID so the FIRST render
   // (page refresh / opening old chat) does not trigger a scroll.
   const lastUserMsgId = useRef<string | null>(latestUserMsgId);
 
   useEffect(() => {
-    // Conversation switched — reset tracking to its current latest, don't scroll
+    if (!thread) return;
+    // Conversation switched - reset tracking to its current latest, don't scroll
     if (prevConvId.current !== convId) {
       prevConvId.current = convId;
       lastUserMsgId.current = latestUserMsgId;
@@ -218,11 +232,12 @@ export function ModelColumn({
         lastUser.scrollIntoView({ behavior: "smooth", block: "start" });
       }
     });
-  }, [convId, latestUserMsgId]);
+  }, [convId, latestUserMsgId, thread]);
 
   // Dynamic spacer: just enough room so the last user msg can scroll to top.
   // Shrinks automatically as the assistant response grows beneath it.
   useEffect(() => {
+    if (!thread) return;
     const container = scrollContainerRef.current;
     const spacer = spacerRef.current;
     if (!container || !spacer) return;
@@ -255,15 +270,17 @@ export function ModelColumn({
       ro.disconnect();
       mo.disconnect();
     };
-  }, [thread.messages.length]);
+  }, [thread]);
 
 
+
+  if (!conv || !thread) return null;
 
   // Toggle pill shared between collapsed strip and full header
   const TogglePill = (
     <button
       onClick={handleToggle}
-      title={isDisabled ? "Enable — expand and receive prompts" : "Pause — collapse and stop receiving prompts"}
+      title={isDisabled ? "Enable - expand and receive prompts" : "Pause - collapse and stop receiving prompts"}
       className="flex items-center px-0.5"
     >
       <span
@@ -321,14 +338,15 @@ export function ModelColumn({
       onDragOver={onDragOver}
       onDrop={onDrop}
       className={
-        "flex h-full min-w-[320px] flex-1 flex-col overflow-hidden transition border-t-2 " +
+        "flex h-full flex-1 flex-col overflow-hidden transition border-t-2 " +
+        (compact ? "min-w-[280px] " : "min-w-[320px] ") +
         (isFocused ? "border-t-[var(--accent)]" : "border-t-transparent") +
         (isOtherFocused ? " opacity-40" : "") +
         (isDragOver ? " ring-2 ring-inset ring-[var(--accent)]" : "")
       }
     >
       {/* Header */}
-      <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3.5 py-2.5">
+      <div className={"flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] " + (compact ? "px-3 py-2" : "px-3.5 py-2.5")}>
         <div className="flex min-w-0 items-center gap-2.5">
           <span
             draggable
@@ -345,13 +363,22 @@ export function ModelColumn({
             </div>
             <div className="truncate text-[11px] text-[var(--fg-muted)]">
               {providerName}
-              {info?.free ? " · free" : ""}
+              {info?.free ? " - free" : ""}
             </div>
           </div>
         </div>
         <div className="flex items-center gap-1 text-[var(--fg-muted)]">
           {TogglePill}
-          {/* Stop streaming button — only visible when pending */}
+          {canRegenerate && (
+            <button
+              onClick={regenerate}
+              className="rounded p-1.5 hover:bg-[var(--bg)] hover:text-[var(--fg)]"
+              title="Regenerate this model"
+            >
+              <RotateCcw size={13} />
+            </button>
+          )}
+          {/* Stop streaming button - only visible when pending */}
           {isPending && (
             <button
               onClick={stopStream}
@@ -375,14 +402,14 @@ export function ModelColumn({
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className="flex-1 space-y-3 overflow-y-auto p-3">
+      <div ref={scrollContainerRef} className={"flex-1 overflow-y-auto " + (compact ? "space-y-2 p-2" : "space-y-3 p-3")}>
         {thread.messages.length === 0 && (
           <div className="pt-8 text-center text-xs text-[var(--fg-subtle)]">
             Send a prompt to see this model respond.
           </div>
         )}
         {thread.messages.map((m) => (
-          <MessageBubble key={m.id} msg={m} />
+          <MessageBubble key={m.id} msg={m} compact={compact} onRetry={regenerate} />
         ))}
         {/* Dynamic spacer: only as tall as needed so latest user msg can reach top.
             Shrinks as assistant response grows; disappears once content fills view. */}
@@ -391,7 +418,7 @@ export function ModelColumn({
 
       {isOtherFocused && (
         <div className="border-t border-[var(--border)] bg-[var(--bg-soft)] px-3 py-1.5 text-center text-[10px] text-[var(--fg-muted)]">
-          read-only · another model is focused
+          read-only - another model is focused
         </div>
       )}
     </div>

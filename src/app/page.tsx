@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useChat, useSettings } from "@/lib/store";
 import { Sidebar } from "@/components/Sidebar";
 import { ModelColumn } from "@/components/ModelColumn";
@@ -10,10 +10,14 @@ import { ConsensusButton } from "@/components/ConsensusButton";
 import { ModelPicker } from "@/components/ModelPicker";
 import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
 import { KeyRound } from "lucide-react";
+import { isOllamaModelId } from "@/lib/models";
 
 export default function Home() {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false
+  );
 
   const setSelectedModels = useChat((s) => s.setSelectedModels);
   const dragSrc = useRef<string | null>(null);
@@ -22,7 +26,7 @@ export default function Home() {
   const activeId = useChat((s) => s.activeId);
   const newConversation = useChat((s) => s.newConversation);
   const apiKey = useSettings((s) => s.apiKey);
-  const needsKey = !apiKey;
+  const geminiApiKey = useSettings((s) => s.geminiApiKey);
 
   const handleDragStart = (id: string) => {
     dragSrc.current = id;
@@ -58,8 +62,16 @@ export default function Home() {
   if (!mounted) return null;
 
   const conv = activeId ? conversations[activeId] : null;
+  const needsGroqKey =
+    !!conv &&
+    !apiKey &&
+    conv.selectedModels.some((id) => !id.startsWith("gemini") && !isOllamaModelId(id));
+  const needsGeminiKey =
+    !!conv &&
+    !geminiApiKey &&
+    conv.selectedModels.some((id) => id.startsWith("gemini"));
 
-  // Determine if the conversation has any messages yet — if not, show the hero
+  // Determine if the conversation has any messages yet - if not, show the hero
   const hasMessages = !!conv && conv.selectedModels.some(
     (id) => (conv.threads[id]?.messages.length ?? 0) > 0
   );
@@ -81,8 +93,8 @@ export default function Home() {
             <span className="truncate text-xs text-[var(--fg-muted)]">
               {conv
                 ? conv.focusedModel
-                  ? "· Focused on 1 model"
-                  : `· ${conv.selectedModels.length} model${conv.selectedModels.length === 1 ? "" : "s"}`
+                  ? "- Focused on 1 model"
+                  : `- ${conv.selectedModels.length} model${conv.selectedModels.length === 1 ? "" : "s"}`
                 : ""}
             </span>
           </div>
@@ -94,11 +106,11 @@ export default function Home() {
           </div>
         </header>
 
-        {needsKey && (
+        {(needsGroqKey || needsGeminiKey) && (
           <div className="flex items-center gap-2 border-b border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
             <KeyRound size={14} />
             <span>
-            Add your Groq API key in Settings to start chatting.
+              Add your {needsGroqKey && needsGeminiKey ? "Groq and Gemini API keys" : needsGroqKey ? "Groq API key" : "Gemini API key"} in Settings to use selected cloud models.
             </span>
           </div>
         )}

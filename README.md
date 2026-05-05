@@ -1,4 +1,4 @@
-# Alles AI — Compare LLMs side-by-side
+# Alles AI - Compare LLMs side-by-side
 
 **Alles AI** sends a single prompt to multiple free AI models and streams their responses **side-by-side** in real time.
 
@@ -16,21 +16,24 @@
 | Gemini 2.5 Flash Lite | Google | 1M | Vision |
 
 All models are **free**. Groq models require a [Groq API key](https://console.groq.com). Gemini requires a [Google AI Studio key](https://aistudio.google.com/api-keys).
+Optional local models come from your own Ollama install and are selected from the models already pulled on your machine.
 
 ## Features
 
-- **Multi-model side-by-side chat** — fan a prompt out to all selected models in parallel
+- **Multi-model side-by-side chat** - fan a prompt out to all selected models in parallel
 - **Token-by-token streaming** per column independently
-- **BYOK** — API keys stored only in your browser's `localStorage`, never on a server
-- **Per-column multi-turn** — each model keeps its own conversation thread
-- **Focus mode** — click the focus icon on any column to direct further prompts to one model only
-- **Pause / resume columns** — toggle individual models on/off without losing their history
+- **BYOK** - API keys stored only in your browser's `localStorage`, never on a server
+- **Per-column multi-turn** - each model keeps its own conversation thread
+- **Focus mode** - click the focus icon on any column to direct further prompts to one model only
+- **Pause / resume columns** - toggle individual models on/off without losing their history
 - **Drag to reorder** columns
-- **Consensus answer** — synthesizes all model responses into one best answer (powered by Llama 3.3 70B on Groq)
-- **Thinking block** — collapsible `<think>` reasoning display for models that support it
+- **Optional local Ollama models** - select installed local models and compare them beside Groq/Gemini
+- **Consensus answer** - synthesizes all model responses into one best answer using Groq or a selected local model
+- **Thinking block** - collapsible `<think>` reasoning display for models that support it
 - **Markdown + syntax highlighting** for code-heavy responses
-- **Vision input** — attach an image; vision-capable models receive it
-- **Persistent history** in `localStorage` — full conversation sidebar with search
+- **Vision input** - attach an image; vision-capable models receive it, text-only models still answer the prompt
+- **Persistent history** in `localStorage` - full conversation sidebar with search, delete confirmation, export, import, and clear-all confirmation
+- **Compact columns** for dense desktop comparisons
 - **Dark / light theme**
 - **Stop streaming** per-column or globally
 
@@ -40,8 +43,9 @@ All models are **free**. Groq models require a [Groq API key](https://console.gr
 - **Tailwind CSS 4** + **lucide-react** icons
 - **Zustand 5** (with `persist`) for client state and chat history
 - **react-markdown** + **remark-gfm** + **rehype-highlight** for rendering
-- **Groq** chat completions API (OpenAI-compatible, SSE → NDJSON proxy)
-- **Google Gemini** native streaming API (SSE → NDJSON proxy)
+- **Groq** chat completions API (OpenAI-compatible, SSE -> NDJSON proxy)
+- **Google Gemini** native streaming API (SSE -> NDJSON proxy)
+- **Ollama** local chat API (NDJSON to NDJSON proxy)
 
 ## Quick start
 
@@ -52,6 +56,8 @@ npm run dev
 ```
 
 Open <http://localhost:3000>, click **Settings**, add your API keys, then start chatting.
+
+For local models, install and run [Ollama](https://ollama.com), enable **Local Ollama models** in Settings, refresh installed models, then select the local models from **Models**.
 
 ### Environment variables (optional server-side keys)
 
@@ -68,18 +74,19 @@ If set, these act as fallback keys so visitors don't need their own. Client-prov
 
 ```
 Browser (Next.js page)
-  ├── Zustand store (conversations, threads, settings) → localStorage
-  └── For each selected model:
-        POST /api/chat  ──────────────► Groq / Gemini (SSE)
-                       ◄── NDJSON ─── (delta | usage | done | error)
+  |-- Zustand store (conversations, threads, settings) -> localStorage
+  `-- For each selected model:
+        POST /api/chat  --------------------------------> Groq / Gemini / Ollama
+                       <-------------------------------- NDJSON (delta | usage | done | error)
 
   Consensus:
-        POST /api/consensus ──────────► Groq: llama-3.3-70b-versatile (SSE)
-                            ◄── NDJSON (delta | done)
+        POST /api/consensus ---------------------------> Groq or selected Ollama model
+                            <-------------------------- NDJSON (delta | done)
 ```
 
-- `/api/chat` — routes to Groq (OpenAI-compatible) or Gemini native API based on model ID prefix
-- `/api/consensus` — takes all model responses, synthesizes a best answer via Llama 3.3 70B
+- `/api/chat` - routes to Groq, Gemini, or Ollama based on model ID prefix
+- `/api/consensus` - takes all model responses, synthesizes a best answer via Groq or a selected local model
+- `/api/ollama/models` - lists installed Ollama models from the configured local base URL
 
 ## Project structure
 
@@ -90,8 +97,9 @@ src/
     layout.tsx            # Root layout + fonts
     globals.css           # Theme tokens + markdown styles
     api/
-      chat/route.ts       # Streaming proxy → Groq / Gemini
+      chat/route.ts       # Streaming proxy -> Groq / Gemini / Ollama
       consensus/route.ts  # Consensus synthesis endpoint
+      ollama/models/      # Installed local model discovery
   components/
     Composer.tsx          # Bottom chat input bar
     HeroComposer.tsx      # First-prompt landing screen

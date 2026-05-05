@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DEFAULT_SELECTED_MODELS, MODEL_CATALOG } from "./models";
+import { CONSENSUS_MODEL, DEFAULT_SELECTED_MODELS, MODEL_CATALOG, PRESET_CLOUD_OLLAMA_MODELS, isOllamaModelId, isCloudOllamaModelId, getCloudOllamaModelName } from "./models";
 import { uid } from "./utils";
 
 export type Role = "user" | "assistant" | "system";
@@ -11,7 +11,7 @@ export type Message = {
   id: string;
   role: Role;
   content: string;
-  imageDataUrl?: string; // for vision input
+  imageDataUrl?: never; // image upload removed
   modelId?: string; // for assistant messages
   createdAt: number;
   // streaming/runtime metadata
@@ -33,12 +33,28 @@ export type Conversation = {
   createdAt: number;
   updatedAt: number;
   selectedModels: string[];
-  disabledModels?: string[]; // models paused — won't receive new prompts
+  disabledModels?: string[]; // models paused - won't receive new prompts
   focusedModel?: string | null; // when set, only this model receives further prompts
   threads: Record<string, ModelThread>; // keyed by modelId
+  consensusMessages?: Message[];
 };
 
 type Theme = "light" | "dark";
+
+export type LocalOllamaModel = {
+  name: string;
+  model: string;
+  modifiedAt?: string;
+  size?: number;
+  digest?: string;
+  details?: {
+    format?: string;
+    family?: string;
+    families?: string[];
+    parameter_size?: string;
+    quantization_level?: string;
+  };
+};
 
 type SettingsState = {
   apiKey: string;
@@ -49,6 +65,24 @@ type SettingsState = {
   setSystemPrompt: (s: string) => void;
   webSearch: boolean;
   setWebSearch: (v: boolean) => void;
+  compactColumns: boolean;
+  setCompactColumns: (v: boolean) => void;
+  consensusModel: string;
+  setConsensusModel: (modelId: string) => void;
+  saveConsensusToChat: boolean;
+  setSaveConsensusToChat: (v: boolean) => void;
+  localEnabled: boolean;
+  setLocalEnabled: (v: boolean) => void;
+  ollamaBaseUrl: string;
+  setOllamaBaseUrl: (url: string) => void;
+  ollamaApiKey: string;
+  setOllamaApiKey: (k: string) => void;
+  cloudOllamaEnabled: boolean;
+  setCloudOllamaEnabled: (v: boolean) => void;
+  ollamaCloudBaseUrl: string;
+  setOllamaCloudBaseUrl: (url: string) => void;
+  availableLocalModels: LocalOllamaModel[];
+  setAvailableLocalModels: (models: LocalOllamaModel[]) => void;
 
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -66,6 +100,24 @@ export const useSettings = create<SettingsState>()(
       setSystemPrompt: (s) => set({ systemPrompt: s }),
       webSearch: false,
       setWebSearch: (v) => set({ webSearch: v }),
+      compactColumns: false,
+      setCompactColumns: (v) => set({ compactColumns: v }),
+      consensusModel: CONSENSUS_MODEL,
+      setConsensusModel: (modelId) => set({ consensusModel: modelId }),
+      saveConsensusToChat: false,
+      setSaveConsensusToChat: (v) => set({ saveConsensusToChat: v }),
+      localEnabled: false,
+      setLocalEnabled: (v) => set({ localEnabled: v }),
+      ollamaBaseUrl: "http://localhost:11434",
+      setOllamaBaseUrl: (url) => set({ ollamaBaseUrl: url }),
+      ollamaApiKey: "",
+      setOllamaApiKey: (k) => set({ ollamaApiKey: k }),
+      cloudOllamaEnabled: false,
+      setCloudOllamaEnabled: (v) => set({ cloudOllamaEnabled: v }),
+      ollamaCloudBaseUrl: "https://ollama.com",
+      setOllamaCloudBaseUrl: (url) => set({ ollamaCloudBaseUrl: url }),
+      availableLocalModels: [],
+      setAvailableLocalModels: (models) => set({ availableLocalModels: models }),
 
       theme: "dark",
       setTheme: (t) => set({ theme: t }),
@@ -82,11 +134,14 @@ type ChatState = {
   newConversation: (selectedModels?: string[]) => string;
   setActive: (id: string) => void;
   deleteConversation: (id: string) => void;
+  clearConversations: () => void;
+  importConversations: (conversations: Record<string, Conversation>) => void;
   renameConversation: (id: string, title: string) => void;
   setSelectedModels: (id: string, models: string[]) => void;
+  removeOllamaModels: () => void;
   toggleModelEnabled: (convId: string, modelId: string) => void;
   setFocusedModel: (id: string, modelId: string | null) => void;
-  addUserMessage: (id: string, content: string, imageDataUrl?: string) => string;
+  addUserMessage: (id: string, content: string) => string;
   startAssistant: (convId: string, modelId: string) => string; // returns msg id
   appendAssistant: (convId: string, modelId: string, msgId: string, delta: string) => void;
   finishAssistant: (
@@ -96,6 +151,7 @@ type ChatState = {
     patch?: Partial<Message>
   ) => void;
   failAssistant: (convId: string, modelId: string, msgId: string, error: string) => void;
+  saveConsensus: (convId: string, content: string, modelId: string) => void;
 };
 
 function emptyConversation(selectedModels: string[]): Conversation {
@@ -109,19 +165,20 @@ function emptyConversation(selectedModels: string[]): Conversation {
     updatedAt: now,
     selectedModels,
     threads,
+    consensusMessages: [],
   };
 }
 
 const VALID_MODEL_IDS = new Set(MODEL_CATALOG.map((model) => model.id));
 
 const MODEL_ID_ALIASES: Record<string, string> = {
-  // OpenRouter :free suffix → Groq IDs
+  // Legacy :free suffix -> Groq IDs
   "openai/gpt-oss-120b:free": "openai/gpt-oss-120b",
-  // Old DeepSeek IDs → point to nothing (model removed)
+  // Removed legacy model IDs -> point to nothing
   "deepseek-chat": "",
   "deepseek-r1-distill-llama-70b": "",
   "deepseek-v4-flash": "",
-  // Old Gemini IDs → 2.5 flash lite
+  // Old Gemini IDs -> 2.5 flash lite
   "gemini-2.0-flash": "gemini-2.5-flash-lite",
   "gemini-2.5-flash": "gemini-2.5-flash-lite",
   // gemini-2.5-pro removed
@@ -134,8 +191,14 @@ function findLegacyModelIds(modelId: string): string[] {
     .map(([legacyId]) => legacyId);
 }
 
+const VALID_CLOUD_MODEL_NAMES = new Set(PRESET_CLOUD_OLLAMA_MODELS.map((m) => m.name));
+
 export function normalizeModelId(modelId: string): string | null {
   const normalized = MODEL_ID_ALIASES[modelId] ?? modelId;
+  if (isOllamaModelId(normalized)) return normalized;
+  if (isCloudOllamaModelId(normalized)) {
+    return VALID_CLOUD_MODEL_NAMES.has(getCloudOllamaModelName(normalized)) ? normalized : null;
+  }
   return VALID_MODEL_IDS.has(normalized) ? normalized : null;
 }
 
@@ -175,6 +238,7 @@ function sanitizeConversation(conversation: Conversation): Conversation {
     selectedModels: nextSelectedModels,
     focusedModel: focusedModel && nextSelectedModels.includes(focusedModel) ? focusedModel : null,
     threads,
+    consensusMessages: conversation.consensusMessages ?? [],
   };
 }
 
@@ -216,6 +280,20 @@ export const useChat = create<ChatState>()(
             activeId: s.activeId === id ? remaining[0] ?? null : s.activeId,
           };
         }),
+      clearConversations: () => set({ conversations: {}, activeId: null }),
+      importConversations: (incoming) =>
+        set((s) => {
+          const imported = Object.fromEntries(
+            Object.entries(incoming).map(([id, conversation]) => [
+              id,
+              sanitizeConversation(conversation),
+            ])
+          );
+          return {
+            conversations: { ...s.conversations, ...imported },
+            activeId: Object.keys(imported)[0] ?? s.activeId,
+          };
+        }),
       renameConversation: (id, title) =>
         set((s) => {
           const c = s.conversations[id];
@@ -228,18 +306,45 @@ export const useChat = create<ChatState>()(
         set((s) => {
           const c = s.conversations[id];
           if (!c) return s;
+          const nextModels = Array.from(
+            new Set(
+              models
+                .map(normalizeModelId)
+                .filter((modelId): modelId is string => Boolean(modelId))
+            )
+          );
           const threads = { ...c.threads };
-          for (const m of models) {
+          for (const m of nextModels) {
             if (!threads[m]) threads[m] = { modelId: m, messages: [] };
           }
           // If focused model was deselected, clear focus
-          const focusedModel = c.focusedModel && models.includes(c.focusedModel) ? c.focusedModel : null;
+          const focusedModel = c.focusedModel && nextModels.includes(c.focusedModel) ? c.focusedModel : null;
           return {
-            lastUsedModels: models,
+            lastUsedModels: nextModels,
             conversations: {
               ...s.conversations,
-              [id]: { ...c, selectedModels: models, threads, focusedModel, updatedAt: Date.now() },
+              [id]: { ...c, selectedModels: nextModels, threads, focusedModel, updatedAt: Date.now() },
             },
+          };
+        }),
+      removeOllamaModels: () =>
+        set((s) => {
+          const isAnyOllama = (id: string) => isOllamaModelId(id) || isCloudOllamaModelId(id);
+          const conversations = Object.fromEntries(
+            Object.entries(s.conversations).map(([id, c]) => [
+              id,
+              {
+                ...c,
+                selectedModels: c.selectedModels.filter((modelId) => !isAnyOllama(modelId)),
+                disabledModels: (c.disabledModels ?? []).filter((modelId) => !isAnyOllama(modelId)),
+                focusedModel: c.focusedModel && isAnyOllama(c.focusedModel) ? null : c.focusedModel,
+                updatedAt: Date.now(),
+              },
+            ])
+          );
+          return {
+            conversations,
+            lastUsedModels: s.lastUsedModels.filter((modelId) => !isAnyOllama(modelId)),
           };
         }),
       toggleModelEnabled: (convId, modelId) =>
@@ -272,7 +377,7 @@ export const useChat = create<ChatState>()(
             },
           };
         }),
-      addUserMessage: (id, content, imageDataUrl) => {
+      addUserMessage: (id, content) => {
         const msgId = uid();
         set((s) => {
           const c = s.conversations[id];
@@ -286,7 +391,7 @@ export const useChat = create<ChatState>()(
               ...t,
               messages: [
                 ...t.messages,
-                { id: msgId, role: "user", content, imageDataUrl, createdAt: Date.now() },
+                { id: msgId, role: "user", content, createdAt: Date.now() },
               ],
             };
           }
@@ -368,10 +473,32 @@ export const useChat = create<ChatState>()(
         }),
       failAssistant: (convId, modelId, msgId, error) =>
         get().finishAssistant(convId, modelId, msgId, { error, pending: false }),
+      saveConsensus: (convId, content, modelId) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const note: Message = {
+            id: uid(),
+            role: "assistant",
+            content,
+            modelId,
+            createdAt: Date.now(),
+          };
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: {
+                ...c,
+                consensusMessages: [...(c.consensusMessages ?? []), note],
+                updatedAt: Date.now(),
+              },
+            },
+          };
+        }),
     }),
     {
       name: "alles-ai-chats",
-      version: 15,
+      version: 18,
       migrate: (persistedState) => {
         const state = persistedState as Partial<ChatState> | undefined;
         const conversations = Object.fromEntries(
@@ -401,7 +528,7 @@ export const useChat = create<ChatState>()(
       },
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        // Always sanitize on load — don't rely solely on version-based migration
+        // Always sanitize on load - don't rely solely on version-based migration
         const sanitizedConvs = Object.fromEntries(
           Object.entries(state.conversations).map(([id, conv]) => [
             id,

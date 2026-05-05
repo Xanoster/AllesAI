@@ -26,6 +26,7 @@ const LETTERS: Record<ProviderKey, string> = {
   meta:     "M",
   qwen:     "Q",
   gemini:   "G",
+  ollama:   "L",
 };
 
 export function ProviderIcon({
@@ -42,7 +43,7 @@ export function ProviderIcon({
   const letter = LETTERS[provider] ?? "?";
   const borderRadius = Math.round(size * 0.26);
   const iconSize = Math.round(size * 0.62);
-  const fontSize = letter === "∞" ? Math.round(size * 0.72) : Math.round(size * 0.52);
+  const fontSize = Math.round(size * 0.52);
 
   return (
     <span

@@ -1,7 +1,7 @@
 "use client";
 
 import { useChat, useSettings, type Message, normalizeModelId } from "./store";
-import { getModel } from "./models";
+import { isOllamaModelId, isCloudOllamaModelId } from "./models";
 
 // Per-model abort controllers for mid-stream stopping
 const activeControllers = new Map<string, AbortController>();
@@ -14,12 +14,7 @@ export function abortModel(convId: string, modelId: string) {
 
 type ChatRequestMessage = {
   role: "system" | "user" | "assistant";
-  content:
-    | string
-    | Array<
-        | { type: "text"; text: string }
-        | { type: "image_url"; image_url: { url: string } }
-      >;
+  content: string;
 };
 
 function toApiMessages(history: Message[], systemPrompt: string): ChatRequestMessage[] {
@@ -27,17 +22,7 @@ function toApiMessages(history: Message[], systemPrompt: string): ChatRequestMes
   if (systemPrompt) out.push({ role: "system", content: systemPrompt });
   for (const m of history) {
     if (m.role === "system") continue;
-    if (m.role === "user" && m.imageDataUrl) {
-      out.push({
-        role: "user",
-        content: [
-          { type: "text", text: m.content || "" },
-          { type: "image_url", image_url: { url: m.imageDataUrl } },
-        ],
-      });
-    } else {
-      out.push({ role: m.role, content: m.content });
-    }
+    out.push({ role: m.role, content: m.content });
   }
   return out;
 }
@@ -83,6 +68,9 @@ export async function streamModel(opts: {
         apiKey: settings.apiKey || undefined,
         geminiApiKey: settings.geminiApiKey || undefined,
         webSearch: settings.webSearch || undefined,
+        ollamaBaseUrl: settings.ollamaBaseUrl || undefined,
+        ollamaApiKey: settings.ollamaApiKey || undefined,
+        ollamaCloudBaseUrl: settings.ollamaCloudBaseUrl || undefined,
       }),
     });
 
@@ -95,9 +83,15 @@ export async function streamModel(opts: {
         if (json?.error?.message) errorMsg = json.error.message;
         else if (json?.message) errorMsg = json.message;
       } catch { /* keep raw text */ }
-      if (res.status === 429) errorMsg = "Rate limited — wait a moment and try again.";
+      if (res.status === 429) errorMsg = "Rate limited - wait a moment and try again.";
       if (res.status === 401) errorMsg = "Invalid or missing API key for this model. Check Settings.";
       if (res.status === 404) errorMsg = `Model "${resolvedModelId}" not found. ${errorMsg}`;
+      if (res.status === 502 && isOllamaModelId(resolvedModelId)) {
+        errorMsg = "Ollama is offline or unreachable. Start Ollama and retry this column.";
+      }
+      if (res.status === 502 && isCloudOllamaModelId(resolvedModelId)) {
+        errorMsg = "Cloud Ollama is unreachable. Check the base URL in Settings.";
+      }
       useChat.getState().failAssistant(convId, modelId, msgId, errorMsg);
       return;
     }
@@ -147,7 +141,7 @@ export async function streamModel(opts: {
     useChat.getState().finishAssistant(convId, modelId, msgId, { usage, grounding });
   } catch (err: unknown) {
     if ((err as { name?: string })?.name === "AbortError") {
-      // Keep whatever was already streamed — just mark as no longer pending
+      // Keep whatever was already streamed - just mark as no longer pending
       useChat.getState().finishAssistant(convId, modelId, msgId);
       return;
     }
@@ -161,18 +155,20 @@ export async function streamModel(opts: {
 
 export function sendPromptToAll(
   convId: string,
-  prompt: string,
-  imageDataUrl?: string
+  prompt: string
 ): AbortController {
   const ctrl = new AbortController();
   const state = useChat.getState();
-  state.addUserMessage(convId, prompt, imageDataUrl);
+  const settings = useSettings.getState();
+  state.addUserMessage(convId, prompt);
   const conv = useChat.getState().conversations[convId];
   if (!conv) return ctrl;
   // Respect focus mode and disabled models
   const disabled = new Set(conv.disabledModels ?? []);
   const targets = (conv.focusedModel ? [conv.focusedModel] : conv.selectedModels)
-    .filter((id) => !disabled.has(id));
+    .filter((id) => !disabled.has(id))
+    .filter((id) => settings.localEnabled || !isOllamaModelId(id))
+    .filter((id) => settings.cloudOllamaEnabled || !isCloudOllamaModelId(id));
   for (const modelId of targets) {
     void streamModel({ convId, modelId, abortSignal: ctrl.signal });
   }

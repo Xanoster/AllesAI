@@ -7,8 +7,6 @@ import { ArrowUp, Globe } from "lucide-react";
 import { ProviderIcon } from "./ProviderIcon";
 import { getModel } from "@/lib/models";
 
-// Centered "first prompt" hero — matches the cleaner landing design.
-// After the first prompt, the column layout takes over.
 export function HeroComposer({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const webSearch = useSettings((s) => s.webSearch);
@@ -30,13 +28,12 @@ export function HeroComposer({ convId }: { convId: string }) {
       <div className="hero-grid pointer-events-none absolute inset-0 opacity-40" />
 
       <div className="relative z-10 w-full max-w-2xl px-6">
-        {/* Hero greeting */}
         <div className="mb-8 text-center">
           <h1 className="text-4xl font-semibold tracking-tight text-[var(--fg)]">
             Ask many minds at once
           </h1>
           <p className="mt-3 text-base text-[var(--fg-muted)]">
-            Compare answers from the world's best free AI models, side-by-side.
+            Compare answers from top free AI models, side-by-side.
           </p>
           <div className="mt-6 flex items-center justify-center gap-2">
             {conv.selectedModels.slice(0, 8).map((id) => {
@@ -56,14 +53,16 @@ export function HeroComposer({ convId }: { convId: string }) {
           </div>
         </div>
 
-        {/* Pill composer matches bottom Composer */}
         <form onSubmit={onSubmit}>
-          <div className="flex items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm focus-within:border-[var(--border-strong)] focus-within:shadow-md transition">
+          <div className="flex items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm transition focus-within:border-[var(--border-strong)] focus-within:shadow-md">
             <button
               type="button"
               onClick={() => setWebSearch(!webSearch)}
-              title={webSearch ? "Web search ON (Gemini) — click to disable" : "Enable web search (Gemini only)"}
-              className={"shrink-0 rounded-full p-1.5 transition " + (webSearch ? "text-[var(--accent)]" : "text-[var(--fg-subtle)] hover:text-[var(--fg-muted)]")}
+              title={webSearch ? "Web search ON (Gemini) - click to disable" : "Enable web search (Gemini only)"}
+              className={
+                "shrink-0 rounded-full p-1.5 transition " +
+                (webSearch ? "text-[var(--accent)]" : "text-[var(--fg-subtle)] hover:text-[var(--fg-muted)]")
+              }
             >
               <Globe size={15} />
             </button>
@@ -77,7 +76,7 @@ export function HeroComposer({ convId }: { convId: string }) {
                   onSubmit();
                 }
               }}
-              placeholder="Ask anything…"
+              placeholder="Ask anything..."
               rows={1}
               className="block max-h-48 w-full flex-1 resize-none self-center bg-transparent py-1.5 text-sm leading-6 text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)]"
             />
