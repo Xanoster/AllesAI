@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Save, Sparkles, Users, X } from "lucide-react";
+import { Sparkles, Users, X } from "lucide-react";
 import {
   filterEnabledModelIds,
   useChat,
@@ -24,6 +24,7 @@ import {
 } from "@/lib/model-rules";
 import { API_PROVIDERS } from "@/lib/providers";
 import { Markdown } from "./Markdown";
+import { SharedResultCard } from "./SharedResultsLane";
 
 type ConsensusChoice = {
   id: string;
@@ -32,9 +33,23 @@ type ConsensusChoice = {
 
 type ConsensusMode = "single" | "council";
 
+type ConsensusStreamEvent =
+  | { type: "delta"; text?: string }
+  | { type: "status"; modelId?: string; model?: string; status?: string; round?: string; message?: string; replacementModelId?: string; replacementModel?: string }
+  | { type: "round_start"; round?: string; title?: string }
+  | { type: "council_note"; round?: string; roundTitle?: string; modelId?: string; model?: string; text?: string }
+  | { type: "error"; message?: string }
+  | { type: "done" };
+
 export function ConsensusButton({ convId }: { convId: string }) {
   const conv = useChat((s) => s.conversations[convId]);
   const saveConsensus = useChat((s) => s.saveConsensus);
+  const startSharedResult = useChat((s) => s.startSharedResult);
+  const appendSharedResultContent = useChat((s) => s.appendSharedResultContent);
+  const finishSharedResult = useChat((s) => s.finishSharedResult);
+  const startCouncilRound = useChat((s) => s.startCouncilRound);
+  const upsertCouncilStatus = useChat((s) => s.upsertCouncilStatus);
+  const addCouncilNote = useChat((s) => s.addCouncilNote);
   const apiKey = useSettings((s) => s.apiKey);
   const groqEnabled = useSettings((s) => s.groqEnabled);
   const geminiApiKey = useSettings((s) => s.geminiApiKey);
@@ -77,6 +92,12 @@ export function ConsensusButton({ convId }: { convId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<ConsensusMode>("single");
+  const [activeResultId, setActiveResultId] = useState<string | null>(null);
+  const activeResult = useChat((s) =>
+    activeResultId
+      ? s.conversations[convId]?.sharedResults?.find((result) => result.id === activeResultId)
+      : undefined
+  );
 
   const localModelNames = useMemo(
     () =>
@@ -158,7 +179,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
       canUseModelForConsensus(consensusInfo)
   );
   const canRunConsensus = hasEnoughResponses && hasConsensusSource && !hasPendingModels;
-  const canRunCouncil = canRunConsensus && text.trim().length > 0 && councilPrimaryIds.length >= 2;
+  const canRunCouncil = hasEnoughResponses && !hasPendingModels && councilPrimaryIds.length >= 2;
   const disabledReason = hasPendingModels
     ? "Waiting for all models to finish"
     : !hasEnoughResponses
@@ -210,7 +231,30 @@ export function ConsensusButton({ convId }: { convId: string }) {
 
     setLoading(true);
     let output = "";
+    let resultId: string | null = null;
+    let streamError: string | null = null;
     try {
+      resultId = startSharedResult(convId, {
+        type: mode === "council" ? "council" : "consensus",
+        title: mode === "council" ? "Model council" : "Consensus answer",
+        modelId: mode === "council" ? "model-council" : selectedConsensusModel,
+        content: "",
+        pending: true,
+        participants: mode === "council" ? councilPrimaryIds.map((id) => getModelAlias(id)) : undefined,
+        statuses:
+          mode === "council"
+            ? councilPrimaryIds.map((id) => ({
+                modelId: id,
+                model: getModelAlias(id),
+                status: "queued",
+                updatedAt: Date.now(),
+              }))
+            : undefined,
+        rounds: mode === "council" ? [] : undefined,
+        notes: mode === "council" ? [] : undefined,
+      });
+      setActiveResultId(resultId);
+
       const res = await fetch("/api/consensus", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -249,19 +293,64 @@ export function ConsensusButton({ convId }: { convId: string }) {
         for (const line of lines) {
           if (!line.trim()) continue;
           try {
-            const obj = JSON.parse(line);
+            const obj = JSON.parse(line) as ConsensusStreamEvent;
             if (obj.type === "delta" && obj.text) {
               output += obj.text;
               setText((t) => t + obj.text);
+              if (resultId) appendSharedResultContent(convId, resultId, obj.text);
+            } else if (obj.type === "round_start" && resultId && isCouncilRound(obj.round)) {
+              startCouncilRound(convId, resultId, {
+                id: obj.round,
+                title: obj.title || roundTitle(obj.round),
+                startedAt: Date.now(),
+              });
+            } else if (obj.type === "status" && resultId && obj.modelId && obj.model && isCouncilStatus(obj.status)) {
+              upsertCouncilStatus(convId, resultId, {
+                modelId: obj.modelId,
+                model: obj.model,
+                status: obj.status,
+                round: isCouncilRound(obj.round) ? obj.round : undefined,
+                message: obj.message,
+                replacementModelId: obj.replacementModelId,
+                replacementModel: obj.replacementModel,
+              });
+            } else if (
+              obj.type === "council_note" &&
+              resultId &&
+              obj.modelId &&
+              obj.model &&
+              obj.text &&
+              isCouncilRound(obj.round)
+            ) {
+              addCouncilNote(convId, resultId, {
+                round: obj.round,
+                roundTitle: obj.roundTitle || roundTitle(obj.round),
+                modelId: obj.modelId,
+                model: obj.model,
+                content: obj.text,
+              });
+            } else if (obj.type === "error") {
+              streamError = obj.message || "Consensus stream failed.";
+              setError(streamError);
+              if (resultId) finishSharedResult(convId, resultId, { error: streamError });
             }
           } catch {
             // ignore malformed stream events
           }
         }
       }
+      if (streamError) return;
+      if (resultId) {
+        finishSharedResult(convId, resultId, {
+          content: output,
+          finalAnswer: mode === "council" ? output : undefined,
+        });
+      }
       if (saveConsensusToChat) persistConsensus(output);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      setError(message);
+      if (resultId) finishSharedResult(convId, resultId, { error: message });
     } finally {
       setLoading(false);
     }
@@ -360,15 +449,6 @@ export function ConsensusButton({ convId }: { convId: string }) {
                   <Users size={12} />
                   Council
                 </button>
-                <button
-                  type="button"
-                  disabled={!text.trim() || loading || saved}
-                  onClick={() => persistConsensus(text)}
-                  className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] hover:border-[var(--border-strong)] disabled:opacity-50"
-                >
-                  {saved ? <Check size={12} /> : <Save size={12} />}
-                  {saved ? "Saved" : "Save"}
-                </button>
               </div>
             </div>
 
@@ -383,24 +463,13 @@ export function ConsensusButton({ convId }: { convId: string }) {
                   {runMode === "council" ? "Running model council..." : "Synthesizing best answer..."}
                 </div>
               )}
-              {text && <Markdown source={text} />}
-              {loading && text && (
-                <span className="ml-1 inline-block h-3 w-1.5 animate-pulse bg-[var(--fg)]" />
+              {activeResult ? (
+                <SharedResultCard result={activeResult} compact />
+              ) : (
+                text && <Markdown source={text} />
               )}
-
-              {(conv.consensusMessages?.length ?? 0) > 0 && (
-                <div className="mt-5 border-t border-[var(--border)] pt-3">
-                  <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
-                    Saved consensus
-                  </div>
-                  <div className="space-y-3">
-                    {conv.consensusMessages!.slice().reverse().slice(0, 3).map((msg) => (
-                      <div key={msg.id} className="rounded-lg border border-[var(--border)] bg-[var(--bg-soft)] p-3">
-                        <Markdown source={msg.content} />
-                      </div>
-                    ))}
-                  </div>
-                </div>
+              {loading && (text || activeResult) && (
+                <span className="ml-1 inline-block h-3 w-1.5 animate-pulse bg-[var(--fg)]" />
               )}
             </div>
           </div>
@@ -456,6 +525,21 @@ function findLocalModelName(cloudModelName: string, localNames: Set<string>): st
 
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
+}
+
+function isCouncilRound(value: unknown): value is "opening" | "critique" | "convergence" | "synthesis" {
+  return value === "opening" || value === "critique" || value === "convergence" || value === "synthesis";
+}
+
+function isCouncilStatus(value: unknown): value is "queued" | "running" | "done" | "failed" | "replaced" {
+  return value === "queued" || value === "running" || value === "done" || value === "failed" || value === "replaced";
+}
+
+function roundTitle(round: "opening" | "critique" | "convergence" | "synthesis"): string {
+  if (round === "opening") return "Opening";
+  if (round === "critique") return "Critique";
+  if (round === "convergence") return "Convergence";
+  return "Final synthesis";
 }
 
 function extractApiError(raw: string): string {

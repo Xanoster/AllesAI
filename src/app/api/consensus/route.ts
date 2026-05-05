@@ -34,6 +34,22 @@ type RequestBody = {
   ollamaCloudBaseUrl?: string;
 };
 
+type ProviderKey = "gemini" | "ollama" | "ollama-cloud" | "groq";
+type CouncilRoundName = "opening" | "critique" | "convergence";
+type CouncilRound = {
+  id: CouncilRoundName;
+  title: string;
+  instruction: string;
+};
+type CouncilNote = {
+  round: CouncilRoundName;
+  roundTitle: string;
+  modelId: string;
+  alias: string;
+  content: string;
+};
+type SendEvent = (event: Record<string, unknown>) => void;
+
 class UpstreamError extends Error {
   status: number;
 
@@ -57,7 +73,8 @@ Output exactly these sections:
 
 const COUNCIL_POSITION_PROMPT = `You are one member of a model council.
 Use your short model name when referring to yourself.
-Give a concise position: strongest answer, weak points, disagreements, and what the final synthesis should say.
+Write visible public debate notes for the user. Do not include hidden chain-of-thought or private reasoning.
+Keep notes concise and concrete. Name agreements and disagreements with short model names only.
 Do not produce the final answer alone.`;
 
 const COUNCIL_SYNTHESIS_PROMPT = `You are the final moderator of a model council.
@@ -71,6 +88,27 @@ Output exactly these sections:
 **Agreement**
 **Disagreement**
 **Model notes**`;
+
+const COUNCIL_ROUNDS: CouncilRound[] = [
+  {
+    id: "opening",
+    title: "Opening",
+    instruction:
+      "State which original answer is strongest, what it gets right, and what important point it misses.",
+  },
+  {
+    id: "critique",
+    title: "Critique",
+    instruction:
+      "Read the opening notes. Challenge weak assumptions, unsupported claims, or missing details from other models.",
+  },
+  {
+    id: "convergence",
+    title: "Convergence",
+    instruction:
+      "State what you now agree on, what remains disputed, and what the final answer should include.",
+  },
+];
 
 function unique(values: Array<string | undefined>): string[] {
   return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
@@ -90,7 +128,7 @@ function resolveOllamaBaseUrl(raw?: string) {
   }
 }
 
-function providerFor(modelId: string): "gemini" | "ollama" | "ollama-cloud" | "groq" {
+function providerFor(modelId: string): ProviderKey {
   if (modelId.startsWith("gemini")) return "gemini";
   if (modelId.startsWith(CLOUD_OLLAMA_PREFIX)) return "ollama-cloud";
   if (modelId.startsWith(OLLAMA_PREFIX)) return "ollama";
@@ -257,88 +295,22 @@ async function generateText(body: RequestBody, modelId: string, messages: ChatMe
   return String(json?.choices?.[0]?.message?.content ?? "").trim();
 }
 
-async function streamText(body: RequestBody, modelId: string, messages: ChatMessage[]): Promise<Response> {
-  const upstream = await fetchUpstream(body, modelId, messages, true);
-  if (upstream.status !== 200) {
-    if (upstream.status === 413) {
-      throw new UpstreamError("Responses too large for consensus - try shorter conversations.", 413);
-    }
-    throw new UpstreamError(await readError(upstream, `${getModelAlias(modelId)} returned HTTP ${upstream.status}`), upstream.status);
-  }
-  if (!upstream.body) throw new UpstreamError("No upstream body", 502);
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
-  const provider = providerFor(modelId);
+function createNdjsonResponse(handler: (send: SendEvent) => Promise<void>): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const reader = upstream.body!.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let doneSent = false;
-      const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      const send: SendEvent = (obj) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
 
       try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          buffer += decoder.decode(value, { stream: true });
-          let idx: number;
-          while ((idx = buffer.indexOf("\n")) >= 0) {
-            const line = buffer.slice(0, idx).trim();
-            buffer = buffer.slice(idx + 1);
-            if (!line) continue;
-
-            try {
-              if (provider === "ollama" || provider === "ollama-cloud") {
-                const json = JSON.parse(line) as {
-                  message?: { content?: string };
-                  done?: boolean;
-                  done_reason?: string;
-                  prompt_eval_count?: number;
-                  eval_count?: number;
-                };
-                const delta = json.message?.content;
-                if (delta) send({ type: "delta", text: delta });
-                if (json.done) {
-                  if (typeof json.prompt_eval_count === "number" || typeof json.eval_count === "number") {
-                    send({ type: "usage", usage: { prompt_tokens: json.prompt_eval_count, completion_tokens: json.eval_count } });
-                  }
-                  if (json.done_reason) send({ type: "finish", reason: json.done_reason });
-                  send({ type: "done" });
-                  doneSent = true;
-                }
-                continue;
-              }
-
-              if (!line.startsWith("data:")) continue;
-              const payload = line.slice(5).trim();
-              if (!payload) continue;
-              if (payload === "[DONE]") {
-                send({ type: "done" });
-                doneSent = true;
-                continue;
-              }
-
-              const json = JSON.parse(payload);
-              if (provider === "gemini") {
-                const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (text) send({ type: "delta", text });
-              } else {
-                const delta = json?.choices?.[0]?.delta?.content;
-                if (delta) send({ type: "delta", text: delta });
-                if (json?.usage) send({ type: "usage", usage: json.usage });
-                const finish = json?.choices?.[0]?.finish_reason;
-                if (finish) send({ type: "finish", reason: finish });
-              }
-            } catch {
-              // ignore malformed stream lines
-            }
-          }
-        }
+        await handler(send);
       } catch (err: unknown) {
-        send({ type: "error", message: err instanceof Error ? err.message : String(err) });
+        send({ type: "error", message: errorMessage(err) });
       } finally {
-        if (!doneSent) send({ type: "done" });
+        send({ type: "done" });
         controller.close();
       }
     },
@@ -351,6 +323,94 @@ async function streamText(body: RequestBody, modelId: string, messages: ChatMess
       "X-Accel-Buffering": "no",
     },
   });
+}
+
+async function openStreamingUpstream(body: RequestBody, modelId: string, messages: ChatMessage[]) {
+  const upstream = await fetchUpstream(body, modelId, messages, true);
+  if (upstream.status !== 200) {
+    if (upstream.status === 413) {
+      throw new UpstreamError("Responses too large for consensus - try shorter conversations.", 413);
+    }
+    throw new UpstreamError(await readError(upstream, `${getModelAlias(modelId)} returned HTTP ${upstream.status}`), upstream.status);
+  }
+  if (!upstream.body) throw new UpstreamError("No upstream body", 502);
+
+  return { upstream, provider: providerFor(modelId) };
+}
+
+async function pipeStreamingText(
+  send: SendEvent,
+  opened: Awaited<ReturnType<typeof openStreamingUpstream>>
+) {
+  const reader = opened.upstream.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line) continue;
+
+      try {
+        if (opened.provider === "ollama" || opened.provider === "ollama-cloud") {
+          const json = JSON.parse(line) as {
+            message?: { content?: string };
+            done?: boolean;
+            done_reason?: string;
+            prompt_eval_count?: number;
+            eval_count?: number;
+          };
+          const delta = json.message?.content;
+          if (delta) send({ type: "delta", text: delta });
+          if (json.done) {
+            if (typeof json.prompt_eval_count === "number" || typeof json.eval_count === "number") {
+              send({ type: "usage", usage: { prompt_tokens: json.prompt_eval_count, completion_tokens: json.eval_count } });
+            }
+            if (json.done_reason) send({ type: "finish", reason: json.done_reason });
+          }
+          continue;
+        }
+
+        if (!line.startsWith("data:")) continue;
+        const payload = line.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+
+        const json = JSON.parse(payload);
+        if (opened.provider === "gemini") {
+          const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (text) send({ type: "delta", text });
+        } else {
+          const delta = json?.choices?.[0]?.delta?.content;
+          if (delta) send({ type: "delta", text: delta });
+          if (json?.usage) send({ type: "usage", usage: json.usage });
+          const finish = json?.choices?.[0]?.finish_reason;
+          if (finish) send({ type: "finish", reason: finish });
+        }
+      } catch {
+        // ignore malformed stream lines
+      }
+    }
+  }
+}
+
+async function streamTextEvents(
+  send: SendEvent,
+  body: RequestBody,
+  modelId: string,
+  messages: ChatMessage[]
+) {
+  const opened = await openStreamingUpstream(body, modelId, messages);
+  await pipeStreamingText(send, opened);
+}
+
+async function streamText(body: RequestBody, modelId: string, messages: ChatMessage[]): Promise<Response> {
+  const opened = await openStreamingUpstream(body, modelId, messages);
+  return createNdjsonResponse((send) => pipeStreamingText(send, opened));
 }
 
 function synthesisMessages(body: RequestBody): ChatMessage[] {
@@ -376,74 +436,162 @@ async function runSingle(body: RequestBody): Promise<Response> {
   throw lastError ?? new UpstreamError("Consensus failed.", 502);
 }
 
+function formatCouncilHistory(notes: CouncilNote[]): string {
+  if (notes.length === 0) return "No previous council notes yet.";
+  return notes
+    .map((note) => `\n--- ${note.roundTitle} / ${note.alias} ---\n${note.content}`)
+    .join("\n");
+}
+
+function sendCouncilStatus(
+  send: SendEvent,
+  modelId: string,
+  status: "queued" | "running" | "done" | "failed" | "replaced",
+  round?: CouncilRoundName | "synthesis",
+  message?: string,
+  replacementModelId?: string
+) {
+  send({
+    type: "status",
+    modelId,
+    model: getModelAlias(modelId),
+    status,
+    round,
+    message,
+    replacementModelId,
+    replacementModel: replacementModelId ? getModelAlias(replacementModelId) : undefined,
+  });
+}
+
+async function generateCouncilNote(
+  body: RequestBody,
+  modelId: string,
+  round: CouncilRound,
+  baseBlock: string,
+  notes: CouncilNote[]
+): Promise<CouncilNote> {
+  const alias = getModelAlias(modelId);
+  const content = await generateText(body, modelId, [
+    { role: "system", content: COUNCIL_POSITION_PROMPT },
+    {
+      role: "user",
+      content:
+        `You are ${alias}.\n\n` +
+        `Round: ${round.title}\n` +
+        `Your task: ${round.instruction}\n\n` +
+        `${baseBlock}\n\n` +
+        `Previous visible council notes:\n${formatCouncilHistory(notes)}\n\n` +
+        `Respond as ${alias}. Start with "${alias}:". Keep it concise and user-visible.`,
+    },
+  ]);
+  if (!content) throw new UpstreamError(`${alias} returned an empty council note.`, 502);
+  return { round: round.id, roundTitle: round.title, modelId, alias, content };
+}
+
 async function runCouncil(body: RequestBody): Promise<Response> {
   const candidates = unique(body.candidateModels ?? []);
   const fallbacks = unique(body.fallbackModels ?? []);
   if (candidates.length < 2) throw new UpstreamError("Model council needs at least two available models.", 400);
 
-  const fallbackQueue = [...fallbacks];
-  const notes: Array<{ modelId: string; alias: string; content: string }> = [];
-  const baseBlock = formatResponseBlock(body.prompt, body.responses);
+  return createNdjsonResponse(async (send) => {
+    const fallbackQueue = fallbacks.filter((id) => !candidates.includes(id));
+    const usedModels = new Set(candidates);
+    const allNotes: CouncilNote[] = [];
+    const baseBlock = formatResponseBlock(body.prompt, body.responses);
+    let participants = [...candidates];
 
-  async function tryPosition(modelId: string) {
-    const alias = getModelAlias(modelId);
-    const content = await generateText(body, modelId, [
-      { role: "system", content: COUNCIL_POSITION_PROMPT },
-      {
-        role: "user",
-        content:
-          `You are ${alias}.\n\n${baseBlock}\n\n` +
-          `Respond as ${alias}. Keep it concise and name agreements/disagreements using short model names only.`,
-      },
-    ]);
-    if (!content) throw new UpstreamError(`${alias} returned an empty council note.`, 502);
-    return { modelId, alias, content };
-  }
-
-  for (const candidate of candidates) {
-    try {
-      notes.push(await tryPosition(candidate));
-      continue;
-    } catch {
-      // Replace failed council member with the next fallback, if any.
+    for (const candidate of participants) {
+      sendCouncilStatus(send, candidate, "queued");
     }
 
-    while (fallbackQueue.length > 0) {
-      const fallback = fallbackQueue.shift()!;
-      if (notes.some((note) => note.modelId === fallback) || candidates.includes(fallback)) continue;
-      try {
-        notes.push(await tryPosition(fallback));
-        break;
-      } catch {
-        // Try the next fallback.
+    for (const round of COUNCIL_ROUNDS) {
+      send({ type: "round_start", round: round.id, title: round.title });
+      const settled = await Promise.allSettled(
+        participants.map(async (modelId) => {
+          sendCouncilStatus(send, modelId, "running", round.id);
+          return generateCouncilNote(body, modelId, round, baseBlock, allNotes);
+        })
+      );
+      const nextParticipants: string[] = [];
+
+      for (let i = 0; i < settled.length; i += 1) {
+        const modelId = participants[i];
+        const result = settled[i];
+        if (result.status === "fulfilled") {
+          allNotes.push(result.value);
+          nextParticipants.push(modelId);
+          sendCouncilStatus(send, modelId, "done", round.id);
+          send({
+            type: "council_note",
+            round: round.id,
+            roundTitle: round.title,
+            modelId,
+            model: result.value.alias,
+            text: result.value.content,
+          });
+          continue;
+        }
+
+        sendCouncilStatus(send, modelId, "failed", round.id, errorMessage(result.reason));
+        let replacementNote: CouncilNote | null = null;
+
+        while (fallbackQueue.length > 0 && !replacementNote) {
+          const fallback = fallbackQueue.shift()!;
+          if (usedModels.has(fallback)) continue;
+          usedModels.add(fallback);
+          sendCouncilStatus(send, modelId, "replaced", round.id, `Replaced by ${getModelAlias(fallback)}`, fallback);
+          sendCouncilStatus(send, fallback, "running", round.id, `Replacing ${getModelAlias(modelId)}`);
+          try {
+            replacementNote = await generateCouncilNote(body, fallback, round, baseBlock, allNotes);
+            allNotes.push(replacementNote);
+            nextParticipants.push(fallback);
+            sendCouncilStatus(send, fallback, "done", round.id);
+            send({
+              type: "council_note",
+              round: round.id,
+              roundTitle: round.title,
+              modelId: fallback,
+              model: replacementNote.alias,
+              text: replacementNote.content,
+            });
+          } catch (err: unknown) {
+            sendCouncilStatus(send, fallback, "failed", round.id, errorMessage(err));
+          }
+        }
+      }
+
+      participants = nextParticipants;
+      if (participants.length < 2) {
+        throw new UpstreamError("Model council needs at least two working models.", 502);
       }
     }
-  }
 
-  if (notes.length < 2) {
-    throw new UpstreamError("Model council needs at least two working models.", 502);
-  }
+    const councilBlock = [
+      baseBlock,
+      "",
+      "Visible council debate:",
+      ...allNotes.map((note) => `\n--- ${note.roundTitle} / ${note.alias} ---\n${note.content}`),
+    ].join("\n");
 
-  const councilBlock = [
-    baseBlock,
-    "",
-    "Council positions:",
-    ...notes.map((note) => `\n--- ${note.alias} ---\n${note.content}`),
-  ].join("\n");
-
-  let lastError: UpstreamError | null = null;
-  for (const note of notes) {
-    try {
-      return await streamText(body, note.modelId, [
-        { role: "system", content: COUNCIL_SYNTHESIS_PROMPT },
-        { role: "user", content: councilBlock },
-      ]);
-    } catch (err) {
-      lastError = err instanceof UpstreamError ? err : new UpstreamError(err instanceof Error ? err.message : String(err), 502);
+    send({ type: "round_start", round: "synthesis", title: "Final synthesis" });
+    let lastError: UpstreamError | null = null;
+    for (const modelId of participants) {
+      try {
+        sendCouncilStatus(send, modelId, "running", "synthesis", "Moderating final verdict");
+        await streamTextEvents(send, body, modelId, [
+          { role: "system", content: COUNCIL_SYNTHESIS_PROMPT },
+          { role: "user", content: councilBlock },
+        ]);
+        sendCouncilStatus(send, modelId, "done", "synthesis", "Final verdict complete");
+        return;
+      } catch (err: unknown) {
+        lastError = err instanceof UpstreamError ? err : new UpstreamError(errorMessage(err), 502);
+        sendCouncilStatus(send, modelId, "failed", "synthesis", lastError.message);
+      }
     }
-  }
 
-  throw lastError ?? new UpstreamError("Model council synthesis failed.", 502);
+    throw lastError ?? new UpstreamError("Model council synthesis failed.", 502);
+  });
 }
 
 export async function POST(req: NextRequest) {

@@ -12,6 +12,7 @@ import { ModelColumn } from "@/components/ModelColumn";
 import { Composer } from "@/components/Composer";
 import { HeroComposer } from "@/components/HeroComposer";
 import { ConsensusButton } from "@/components/ConsensusButton";
+import { SharedResultsLane } from "@/components/SharedResultsLane";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
@@ -200,6 +201,7 @@ export default function Home() {
               ))}
               {/* When focused, show ghost preview of others as small read-only column? Skip for now. */}
             </div>
+            <SharedResultsLane convId={conv.id} />
             <Composer convId={conv.id} />
             <ConsensusButton convId={conv.id} />
           </>

@@ -39,6 +39,54 @@ export type Message = {
   grounding?: { queries: string[]; sources: Array<{ title: string; uri: string }> };
 };
 
+export type SharedResultType = "consensus" | "council";
+export type CouncilRoundId = "opening" | "critique" | "convergence" | "synthesis";
+export type CouncilMemberStatus = "queued" | "running" | "done" | "failed" | "replaced";
+
+export type CouncilStatusEntry = {
+  modelId: string;
+  model: string;
+  status: CouncilMemberStatus;
+  round?: CouncilRoundId;
+  message?: string;
+  replacementModelId?: string;
+  replacementModel?: string;
+  updatedAt: number;
+};
+
+export type CouncilRoundEntry = {
+  id: CouncilRoundId;
+  title: string;
+  startedAt: number;
+};
+
+export type CouncilNoteEntry = {
+  id: string;
+  round: CouncilRoundId;
+  roundTitle: string;
+  modelId: string;
+  model: string;
+  content: string;
+  createdAt: number;
+};
+
+export type SharedResult = {
+  id: string;
+  type: SharedResultType;
+  title: string;
+  modelId: string;
+  content: string;
+  finalAnswer?: string;
+  createdAt: number;
+  updatedAt: number;
+  pending?: boolean;
+  error?: string;
+  participants?: string[];
+  statuses?: CouncilStatusEntry[];
+  rounds?: CouncilRoundEntry[];
+  notes?: CouncilNoteEntry[];
+};
+
 // Per-model thread of messages. The user prompt is mirrored across all columns.
 export type ModelThread = {
   modelId: string;
@@ -55,6 +103,7 @@ export type Conversation = {
   focusedModel?: string | null; // when set, only this model receives further prompts
   threads: Record<string, ModelThread>; // keyed by modelId
   consensusMessages?: Message[];
+  sharedResults?: SharedResult[];
 };
 
 type Theme = "light" | "dark";
@@ -328,6 +377,27 @@ type ChatState = {
   ) => void;
   failAssistant: (convId: string, modelId: string, msgId: string, error: string) => void;
   saveConsensus: (convId: string, content: string, modelId: string) => void;
+  startSharedResult: (
+    convId: string,
+    result: Omit<SharedResult, "id" | "createdAt" | "updatedAt">
+  ) => string;
+  appendSharedResultContent: (convId: string, resultId: string, delta: string) => void;
+  finishSharedResult: (
+    convId: string,
+    resultId: string,
+    patch?: Partial<Pick<SharedResult, "content" | "finalAnswer" | "error">>
+  ) => void;
+  startCouncilRound: (convId: string, resultId: string, round: CouncilRoundEntry) => void;
+  upsertCouncilStatus: (
+    convId: string,
+    resultId: string,
+    status: Omit<CouncilStatusEntry, "updatedAt">
+  ) => void;
+  addCouncilNote: (
+    convId: string,
+    resultId: string,
+    note: Omit<CouncilNoteEntry, "id" | "createdAt">
+  ) => void;
 };
 
 function emptyConversation(selectedModels: string[]): Conversation {
@@ -342,6 +412,7 @@ function emptyConversation(selectedModels: string[]): Conversation {
     selectedModels,
     threads,
     consensusMessages: [],
+    sharedResults: [],
   };
 }
 
@@ -390,6 +461,20 @@ export function normalizeModelId(modelId: string): string | null {
   return VALID_MODEL_IDS.has(normalized) ? normalized : null;
 }
 
+function legacyConsensusToSharedResults(messages?: Message[]): SharedResult[] {
+  return (messages ?? []).map((message) => ({
+    id: message.id,
+    type: message.modelId === "model-council" ? "council" : "consensus",
+    title: message.modelId === "model-council" ? "Model council" : "Consensus answer",
+    modelId: message.modelId ?? "consensus",
+    content: message.content,
+    finalAnswer: message.modelId === "model-council" ? message.content : undefined,
+    createdAt: message.createdAt,
+    updatedAt: message.createdAt,
+    pending: false,
+  }));
+}
+
 function sanitizeConversation(conversation: Conversation): Conversation {
   const selectedModels = dedupeModelIdsByFamily(
     Array.from(
@@ -429,6 +514,9 @@ function sanitizeConversation(conversation: Conversation): Conversation {
     focusedModel: focusedModel && nextSelectedModels.includes(focusedModel) ? focusedModel : null,
     threads,
     consensusMessages: conversation.consensusMessages ?? [],
+    sharedResults:
+      conversation.sharedResults ??
+      legacyConsensusToSharedResults(conversation.consensusMessages),
   };
 }
 
@@ -793,10 +881,149 @@ export const useChat = create<ChatState>()(
             },
           };
         }),
+      startSharedResult: (convId, result) => {
+        const resultId = uid();
+        const now = Date.now();
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const note: SharedResult = {
+            ...result,
+            id: resultId,
+            content: result.content ?? "",
+            createdAt: now,
+            updatedAt: now,
+          };
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: {
+                ...c,
+                sharedResults: [...(c.sharedResults ?? []), note],
+                updatedAt: now,
+              },
+            },
+          };
+        });
+        return resultId;
+      },
+      appendSharedResultContent: (convId, resultId, delta) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const now = Date.now();
+          const sharedResults = (c.sharedResults ?? []).map((result) =>
+            result.id === resultId
+              ? {
+                  ...result,
+                  content: result.content + delta,
+                  finalAnswer:
+                    result.type === "council"
+                      ? (result.finalAnswer ?? "") + delta
+                      : result.finalAnswer,
+                  updatedAt: now,
+                }
+              : result
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, sharedResults, updatedAt: now },
+            },
+          };
+        }),
+      finishSharedResult: (convId, resultId, patch) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const now = Date.now();
+          const sharedResults = (c.sharedResults ?? []).map((result) =>
+            result.id === resultId
+              ? { ...result, ...patch, pending: false, updatedAt: now }
+              : result
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, sharedResults, updatedAt: now },
+            },
+          };
+        }),
+      startCouncilRound: (convId, resultId, round) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const now = Date.now();
+          const sharedResults = (c.sharedResults ?? []).map((result) => {
+            if (result.id !== resultId) return result;
+            const rounds = result.rounds ?? [];
+            return {
+              ...result,
+              rounds: rounds.some((entry) => entry.id === round.id)
+                ? rounds.map((entry) => (entry.id === round.id ? { ...entry, ...round } : entry))
+                : [...rounds, round],
+              updatedAt: now,
+            };
+          });
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, sharedResults, updatedAt: now },
+            },
+          };
+        }),
+      upsertCouncilStatus: (convId, resultId, status) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const now = Date.now();
+          const entry: CouncilStatusEntry = { ...status, updatedAt: now };
+          const sharedResults = (c.sharedResults ?? []).map((result) => {
+            if (result.id !== resultId) return result;
+            const statuses = result.statuses ?? [];
+            return {
+              ...result,
+              statuses: statuses.some((item) => item.modelId === entry.modelId)
+                ? statuses.map((item) =>
+                    item.modelId === entry.modelId ? { ...item, ...entry } : item
+                  )
+                : [...statuses, entry],
+              updatedAt: now,
+            };
+          });
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, sharedResults, updatedAt: now },
+            },
+          };
+        }),
+      addCouncilNote: (convId, resultId, note) =>
+        set((s) => {
+          const c = s.conversations[convId];
+          if (!c) return s;
+          const now = Date.now();
+          const entry: CouncilNoteEntry = { ...note, id: uid(), createdAt: now };
+          const sharedResults = (c.sharedResults ?? []).map((result) =>
+            result.id === resultId
+              ? {
+                  ...result,
+                  notes: [...(result.notes ?? []), entry],
+                  updatedAt: now,
+                }
+              : result
+          );
+          return {
+            conversations: {
+              ...s.conversations,
+              [convId]: { ...c, sharedResults, updatedAt: now },
+            },
+          };
+        }),
     }),
     {
       name: "alles-ai-chats",
-      version: 19,
+      version: 20,
       migrate: (persistedState) => {
         const state = persistedState as Partial<ChatState> | undefined;
         const conversations = Object.fromEntries(
