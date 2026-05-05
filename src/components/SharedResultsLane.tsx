@@ -3,8 +3,10 @@
 import { useMemo, useState, type ReactNode } from "react";
 import {
   AlertCircle,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
-  Clock3,
+  History,
   Loader2,
   Sparkles,
   Users,
@@ -26,9 +28,16 @@ const ROUND_TITLES: Record<CouncilRoundId, string> = {
   synthesis: "Final synthesis",
 };
 
-export function SharedResultsLane({ convId }: { convId: string }) {
+export function SynthesisHistoryButton({
+  convId,
+  compact = false,
+}: {
+  convId: string;
+  compact?: boolean;
+}) {
   const conv = useChat((s) => s.conversations[convId]);
   const [tab, setTab] = useState<SharedResultType>("consensus");
+  const [open, setOpen] = useState(false);
 
   const results = useMemo(
     () => [...(conv?.sharedResults ?? [])].sort((a, b) => b.createdAt - a.createdAt),
@@ -47,35 +56,58 @@ export function SharedResultsLane({ convId }: { convId: string }) {
   if (!conv || results.length === 0) return null;
 
   return (
-    <section className="shrink-0 border-t border-[var(--border)] bg-[var(--bg-soft)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
-        <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
-          <TabButton
-            active={activeTab === "consensus"}
-            disabled={consensusCount === 0}
-            icon={<Sparkles size={12} />}
-            label={`Consensus ${consensusCount || ""}`.trim()}
-            onClick={() => setTab("consensus")}
-          />
-          <TabButton
-            active={activeTab === "council"}
-            disabled={councilCount === 0}
-            icon={<Users size={12} />}
-            label={`Council ${councilCount || ""}`.trim()}
-            onClick={() => setTab("council")}
-          />
+    <div className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className={
+          "relative inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] text-xs font-medium text-[var(--fg)] transition hover:border-[var(--border-strong)] hover:bg-[var(--bg)] " +
+          (compact ? "px-2 py-1.5" : "px-2.5 py-1.5")
+        }
+        title="Consensus and council results"
+      >
+        <History size={14} />
+        {!compact && <span>Results</span>}
+        <span className="rounded bg-[var(--accent)] px-1.5 py-0.5 text-[9px] leading-none text-[var(--accent-fg)]">
+          {results.length}
+        </span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full z-40 mt-2 w-[min(440px,calc(100vw-1rem))] overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)] shadow-2xl">
+          <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-soft)] px-3 py-2">
+            <div className="inline-flex rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5">
+              <TabButton
+                active={activeTab === "consensus"}
+                disabled={consensusCount === 0}
+                icon={<Sparkles size={12} />}
+                label={`Consensus ${consensusCount || ""}`.trim()}
+                onClick={() => setTab("consensus")}
+              />
+              <TabButton
+                active={activeTab === "council"}
+                disabled={councilCount === 0}
+                icon={<Users size={12} />}
+                label={`Council ${councilCount || ""}`.trim()}
+                onClick={() => setTab("council")}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="rounded px-2 py-1 text-[11px] text-[var(--fg-muted)] hover:bg-[var(--bg)] hover:text-[var(--fg)]"
+            >
+              Close
+            </button>
+          </div>
+          <div className="max-h-[70vh] space-y-2 overflow-y-auto p-2">
+            {visibleResults.map((result) => (
+              <SharedResultCard key={result.id} result={result} compact />
+            ))}
+          </div>
         </div>
-        <div className="hidden items-center gap-1.5 text-[11px] text-[var(--fg-muted)] sm:flex">
-          <Clock3 size={12} />
-          Shared results
-        </div>
-      </div>
-      <div className="max-h-72 space-y-2 overflow-y-auto px-3 py-2">
-        {visibleResults.map((result) => (
-          <SharedResultCard key={result.id} result={result} />
-        ))}
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 
@@ -184,6 +216,53 @@ function ConsensusResult({ result }: { result: SharedResult }) {
 }
 
 function CouncilDebate({ result }: { result: SharedResult }) {
+  const [showProcess, setShowProcess] = useState(false);
+  const hasProcess =
+    (result.statuses?.length ?? 0) > 0 ||
+    (result.rounds?.length ?? 0) > 0 ||
+    (result.notes?.length ?? 0) > 0;
+  const showProcessDetails = result.pending || showProcess;
+
+  return (
+    <>
+      {(result.content.trim() || result.pending) && (
+        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-soft)] p-2">
+          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
+            Final answer
+          </div>
+          {result.content.trim() ? (
+            <Markdown source={result.content} />
+          ) : (
+            <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
+              <Loader2 size={13} className="animate-spin" />
+              Synthesizing final verdict...
+            </div>
+          )}
+        </div>
+      )}
+
+      {!result.pending && hasProcess && (
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-[11px] text-[var(--fg-muted)]">
+            {(result.notes ?? []).length} debate note{(result.notes ?? []).length === 1 ? "" : "s"}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowProcess((value) => !value)}
+            className="inline-flex items-center gap-1 rounded border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)]"
+          >
+            {showProcess ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            {showProcess ? "Hide process" : "How it decided"}
+          </button>
+        </div>
+      )}
+
+      {showProcessDetails && <CouncilProcess result={result} />}
+    </>
+  );
+}
+
+function CouncilProcess({ result }: { result: SharedResult }) {
   return (
     <>
       {(result.statuses?.length ?? 0) > 0 && (
@@ -209,22 +288,6 @@ function CouncilDebate({ result }: { result: SharedResult }) {
           <CouncilRoundBlock key={round} result={result} round={round} />
         ))}
       </div>
-
-      {(result.content.trim() || result.pending) && (
-        <div className="rounded-md border border-[var(--border)] bg-[var(--bg-soft)] p-2">
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
-            Final verdict
-          </div>
-          {result.content.trim() ? (
-            <Markdown source={result.content} />
-          ) : (
-            <div className="flex items-center gap-2 text-xs text-[var(--fg-muted)]">
-              <Loader2 size={13} className="animate-spin" />
-              Synthesizing final verdict...
-            </div>
-          )}
-        </div>
-      )}
     </>
   );
 }

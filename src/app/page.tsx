@@ -12,7 +12,7 @@ import { ModelColumn } from "@/components/ModelColumn";
 import { Composer } from "@/components/Composer";
 import { HeroComposer } from "@/components/HeroComposer";
 import { ConsensusButton } from "@/components/ConsensusButton";
-import { SharedResultsLane } from "@/components/SharedResultsLane";
+import { SynthesisHistoryButton } from "@/components/SharedResultsLane";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SettingsDialog } from "@/components/SettingsDialog";
 import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
@@ -143,20 +143,28 @@ export default function Home() {
           <div className="flex min-w-0 items-center gap-2 md:hidden">
             <img src="/AllesAI.png" alt="Alles AI" className="h-7 w-auto object-contain mix-blend-multiply scale-[2.0] origin-left" />
           </div>
-          <div className="hidden min-w-0 items-baseline gap-2 md:flex">
-            <h1 className="truncate text-base font-semibold text-[var(--fg)]">
-              {conv?.title ?? "Alles AI"}
-            </h1>
-            <span className="truncate text-xs text-[var(--fg-muted)]">
-              {conv
-                ? visibleFocusedModel
-                  ? "- Focused on 1 model"
-                  : `- ${visibleSelectedModels.length} model${visibleSelectedModels.length === 1 ? "" : "s"}`
-                : ""}
-            </span>
+          <div className="hidden min-w-0 items-center gap-2 md:flex">
+            <div className="flex min-w-0 items-baseline gap-2">
+              <h1 className="truncate text-base font-semibold text-[var(--fg)]">
+                {conv?.title ?? "Alles AI"}
+              </h1>
+              <span className="truncate text-xs text-[var(--fg-muted)]">
+                {conv
+                  ? visibleFocusedModel
+                    ? "- Focused on 1 model"
+                    : `- ${visibleSelectedModels.length} model${visibleSelectedModels.length === 1 ? "" : "s"}`
+                  : ""}
+              </span>
+            </div>
+            {conv && <SynthesisHistoryButton convId={conv.id} />}
           </div>
           <div className="flex items-center gap-2">
             {conv && <ModelPicker convId={conv.id} />}
+            {conv && (
+              <div className="md:hidden">
+                <SynthesisHistoryButton convId={conv.id} compact />
+              </div>
+            )}
             <div className="md:hidden">
               <SettingsDialog />
             </div>
@@ -201,7 +209,6 @@ export default function Home() {
               ))}
               {/* When focused, show ghost preview of others as small read-only column? Skip for now. */}
             </div>
-            <SharedResultsLane convId={conv.id} />
             <Composer convId={conv.id} />
             <ConsensusButton convId={conv.id} />
           </>
