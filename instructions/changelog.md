@@ -13,6 +13,11 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-05-12] Prepare remaining local changes for push
+**Changed:** `AGENTS.md`, `instructions/commit-rules.md`, `src/app/page.tsx`
+**Why:** Publish the remaining local changes without committing secret details or whitespace-only noise.
+**Summary:** Replaced a PAT-specific note with a general secret-handling rule, corrected the feature-branch push rule wording, and removed trailing whitespace from the page entrypoint.
+
 ## [2026-05-12] Update direct dependencies
 **Changed:** `package.json`, `package-lock.json`
 **Why:** Bring the app's direct dependencies up to the latest npm releases.

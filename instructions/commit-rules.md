@@ -10,6 +10,7 @@
 - Avoid vague messages like `update stuff` or `changes`.
 
 ## Before push
+- Never push to main branch directly; create a feature branch and push to that only.
 - Check `git status` and `git log --oneline`.
 - Confirm branch and remote are correct.
 - Push only with the `Xanoster` account.
