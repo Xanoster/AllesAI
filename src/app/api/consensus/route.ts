@@ -24,9 +24,11 @@ type RequestBody = {
   prompt: string;
   responses: ResponseEntry[];
   mode?: "single" | "council";
+  qualityMode?: QualityMode;
   consensusModel?: string;
   candidateModels?: string[];
   fallbackModels?: string[];
+  moderatorModels?: string[];
   apiKey?: string;
   geminiApiKey?: string;
   ollamaBaseUrl?: string;
@@ -35,6 +37,7 @@ type RequestBody = {
 };
 
 type ProviderKey = "gemini" | "ollama" | "ollama-cloud" | "groq";
+type QualityMode = "quick" | "deep";
 type CouncilRoundName = "opening" | "critique" | "convergence";
 type CouncilRound = {
   id: CouncilRoundName;
@@ -59,35 +62,83 @@ class UpstreamError extends Error {
   }
 }
 
-const SYNTHESIS_PROMPT = `You are a careful consensus synthesizer.
-Use only short model names such as Gemini 2.5, Gemma 4, Llama 4, Cogito, Nemotron, or GPT.
-Never write "Model 1", "Model 2", or full model IDs.
-Do not copy one model's full answer. Compare, summarize, decide, and explain the logic.
+const MODEL_NAME_RULES = `Use only short model names such as Gemini 2.5, Gemma 4, Llama 4, Cogito, Nemotron, or GPT.
+Never write "Model 1", "Model 2", or full model IDs.`;
 
-Output exactly these sections:
+const QUALITY_RUBRIC = `Use this quality rubric before deciding:
+- Correctness: prefer answers that are factual, internally consistent, and honest about uncertainty.
+- Completeness: include the parts needed to directly satisfy the user.
+- Disagreement handling: call out meaningful conflicts between models instead of hiding them.
+- Missing context: say what cannot be known from the provided answers.
+- Final recommendation: give one clear answer, not a vote tally.`;
+
+const QUICK_SECTIONS = `Output exactly these sections:
 **Best answer**
 **Why this is best**
+**Confidence**
 **Agreement**
 **Disagreement**
 **Model notes**`;
 
-const COUNCIL_POSITION_PROMPT = `You are one member of a model council.
+const DEEP_SECTIONS = `Output exactly these sections:
+**Best answer**
+**Why this is best**
+**Confidence**
+**Quality scorecard**
+**Claim checks**
+**Agreement**
+**Disagreement**
+**Missing context**
+**Model notes**`;
+
+function synthesisPrompt(mode: QualityMode): string {
+  const deepInstruction =
+    mode === "deep"
+      ? `Deep answer mode is enabled. Claim-check the most important statements against only the supplied model answers, identify unsupported or conflicting claims, and explain why the winning answer won. Use the confidence section for a concise confidence label plus why.`
+      : `Quick answer mode is enabled. Be concise, but still use the rubric and include a short confidence statement.`;
+
+  return `You are a careful consensus synthesizer.
+${MODEL_NAME_RULES}
+Do not copy one model's full answer. Compare, summarize, decide, and explain the logic.
+${QUALITY_RUBRIC}
+${deepInstruction}
+
+${mode === "deep" ? DEEP_SECTIONS : QUICK_SECTIONS}`;
+}
+
+function councilPositionPrompt(mode: QualityMode): string {
+  const deepInstruction =
+    mode === "deep"
+      ? "Deep answer mode is enabled. Explicitly flag unsupported claims, weak assumptions, missing evidence, and confidence-impacting disagreements."
+      : "Quick answer mode is enabled. Keep the note short while naming the most important strength and risk.";
+
+  return `You are one member of a model council.
 Use your short model name when referring to yourself.
 Write visible public debate notes for the user. Do not include hidden chain-of-thought or private reasoning.
 Keep notes concise and concrete. Name agreements and disagreements with short model names only.
+Use the quality rubric: correctness, completeness, uncertainty, disagreements, missing context, and final recommendation.
+${deepInstruction}
 Do not produce the final answer alone.`;
+}
 
-const COUNCIL_SYNTHESIS_PROMPT = `You are the final moderator of a model council.
-Use only short model names such as Gemini 2.5, Gemma 4, Llama 4, Cogito, Nemotron, or GPT.
-Never write "Model 1", "Model 2", or full model IDs.
+function councilSynthesisPrompt(mode: QualityMode): string {
+  const deepInstruction =
+    mode === "deep"
+      ? `Deep answer mode is enabled. Use the council notes to claim-check important statements, surface confidence, and explain why the final answer beat plausible alternatives.`
+      : `Quick answer mode is enabled. Keep the final verdict concise while preserving meaningful uncertainty.`;
+
+  return `You are the final moderator of a model council.
+${MODEL_NAME_RULES}
 Synthesize the council positions and the original model answers. Do not copy one model's full answer.
+${QUALITY_RUBRIC}
+${deepInstruction}
 
-Output exactly these sections:
-**Best answer**
-**Why this is best**
-**Agreement**
-**Disagreement**
-**Model notes**`;
+${mode === "deep" ? DEEP_SECTIONS : QUICK_SECTIONS}`;
+}
+
+function qualityModeFor(mode?: QualityMode): QualityMode {
+  return mode === "deep" ? "deep" : "quick";
+}
 
 const COUNCIL_ROUNDS: CouncilRound[] = [
   {
@@ -415,7 +466,7 @@ async function streamText(body: RequestBody, modelId: string, messages: ChatMess
 
 function synthesisMessages(body: RequestBody): ChatMessage[] {
   return [
-    { role: "system", content: SYNTHESIS_PROMPT },
+    { role: "system", content: synthesisPrompt(qualityModeFor(body.qualityMode)) },
     { role: "user", content: formatResponseBlock(body.prompt, body.responses) },
   ];
 }
@@ -472,7 +523,7 @@ async function generateCouncilNote(
 ): Promise<CouncilNote> {
   const alias = getModelAlias(modelId);
   const content = await generateText(body, modelId, [
-    { role: "system", content: COUNCIL_POSITION_PROMPT },
+    { role: "system", content: councilPositionPrompt(qualityModeFor(body.qualityMode)) },
     {
       role: "user",
       content:
@@ -486,6 +537,13 @@ async function generateCouncilNote(
   ]);
   if (!content) throw new UpstreamError(`${alias} returned an empty council note.`, 502);
   return { round: round.id, roundTitle: round.title, modelId, alias, content };
+}
+
+function moderatorModelIds(body: RequestBody, participants: string[]): string[] {
+  if (body.moderatorModels?.length) {
+    return unique([...body.moderatorModels, ...participants]);
+  }
+  return unique([body.consensusModel, ...(body.fallbackModels ?? []), ...participants]);
 }
 
 async function runCouncil(body: RequestBody): Promise<Response> {
@@ -575,11 +633,11 @@ async function runCouncil(body: RequestBody): Promise<Response> {
 
     send({ type: "round_start", round: "synthesis", title: "Final synthesis" });
     let lastError: UpstreamError | null = null;
-    for (const modelId of participants) {
+    for (const modelId of moderatorModelIds(body, participants)) {
       try {
         sendCouncilStatus(send, modelId, "running", "synthesis", "Moderating final verdict");
         await streamTextEvents(send, body, modelId, [
-          { role: "system", content: COUNCIL_SYNTHESIS_PROMPT },
+          { role: "system", content: councilSynthesisPrompt(qualityModeFor(body.qualityMode)) },
           { role: "user", content: councilBlock },
         ]);
         sendCouncilStatus(send, modelId, "done", "synthesis", "Final verdict complete");

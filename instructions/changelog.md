@@ -13,6 +13,11 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-05-12] Improve consensus and council quality
+**Changed:** `src/app/api/consensus/route.ts`, `src/components/ConsensusButton.tsx`, `src/components/SharedResultsLane.tsx`, `src/lib/store.ts`, `src/lib/models.ts`, `README.md`
+**Why:** Make consensus/council more useful by adding quality modes, better council moderation, clearer UX access, and current documentation.
+**Summary:** Added quick/deep synthesis prompts with a quality rubric, dedicated council moderator routing, separate Consensus and Council actions, and stored confidence/score metadata. Updated the default synthesis model and README wording to match the current eligible-model behavior.
+
 ## [2026-05-12] Prepare remaining local changes for push
 **Changed:** `AGENTS.md`, `instructions/commit-rules.md`, `src/app/page.tsx`
 **Why:** Publish the remaining local changes without committing secret details or whitespace-only noise.

@@ -7,6 +7,7 @@ import {
   useChat,
   useSettings,
   type ProviderToggleSettings,
+  type SharedResultScore,
 } from "@/lib/store";
 import {
   getCloudOllamaModelName,
@@ -32,6 +33,7 @@ type ConsensusChoice = {
 };
 
 type ConsensusMode = "single" | "council";
+type QualityMode = "quick" | "deep";
 
 type ConsensusStreamEvent =
   | { type: "delta"; text?: string }
@@ -92,6 +94,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<ConsensusMode>("single");
+  const [qualityMode, setQualityMode] = useState<QualityMode>("quick");
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const activeResult = useChat((s) =>
     activeResultId
@@ -133,6 +136,15 @@ export function ConsensusButton({ convId }: { convId: string }) {
         ).filter((id): id is string => Boolean(id))
       ),
     [accessSettings, localModelNames]
+  );
+  const councilModeratorIds = useMemo(
+    () =>
+      unique([
+        ...consensusChoices.map((choice) => choice.id),
+        ...councilFallbackIds,
+        ...councilPrimaryIds,
+      ]),
+    [consensusChoices, councilFallbackIds, councilPrimaryIds]
   );
 
   if (!conv) return null;
@@ -180,7 +192,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
   );
   const canRunConsensus = hasEnoughResponses && hasConsensusSource && !hasPendingModels;
   const canRunCouncil = hasEnoughResponses && !hasPendingModels && councilPrimaryIds.length >= 2;
-  const disabledReason = hasPendingModels
+  const consensusDisabledReason = hasPendingModels
     ? "Waiting for all models to finish"
     : !hasEnoughResponses
       ? "Need at least two completed answers"
@@ -189,6 +201,13 @@ export function ConsensusButton({ convId }: { convId: string }) {
         : !hasConsensusSource && consensusSource
           ? `Add ${consensusSource.name} key or enable provider`
           : "Consensus unavailable";
+  const councilDisabledReason = hasPendingModels
+    ? "Waiting for all models to finish"
+    : !hasEnoughResponses
+      ? "Need at least two completed answers"
+      : councilPrimaryIds.length < 2
+        ? "Model council needs at least two available council models"
+        : "Model council unavailable";
 
   const persistConsensus = (content: string) => {
     const modelId = runMode === "council" ? "model-council" : selectedConsensusModel;
@@ -236,9 +255,17 @@ export function ConsensusButton({ convId }: { convId: string }) {
     try {
       resultId = startSharedResult(convId, {
         type: mode === "council" ? "council" : "consensus",
-        title: mode === "council" ? "Model council" : "Consensus answer",
+        title:
+          mode === "council"
+            ? qualityMode === "deep"
+              ? "Deep model council"
+              : "Model council"
+            : qualityMode === "deep"
+              ? "Deep consensus answer"
+              : "Consensus answer",
         modelId: mode === "council" ? "model-council" : selectedConsensusModel,
         content: "",
+        qualityMode,
         pending: true,
         participants: mode === "council" ? councilPrimaryIds.map((id) => getModelAlias(id)) : undefined,
         statuses:
@@ -260,10 +287,12 @@ export function ConsensusButton({ convId }: { convId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
+          qualityMode,
           prompt: latestPrompt,
           responses,
           consensusModel: selectedConsensusModel,
           candidateModels: mode === "council" ? councilPrimaryIds : undefined,
+          moderatorModels: mode === "council" ? councilModeratorIds : undefined,
           fallbackModels:
             mode === "council"
               ? councilFallbackIds
@@ -341,9 +370,11 @@ export function ConsensusButton({ convId }: { convId: string }) {
       }
       if (streamError) return;
       if (resultId) {
+        const metadata = extractResultMetadata(output);
         finishSharedResult(convId, resultId, {
           content: output,
           finalAnswer: mode === "council" ? output : undefined,
+          ...metadata,
         });
       }
       if (saveConsensusToChat) persistConsensus(output);
@@ -358,25 +389,49 @@ export function ConsensusButton({ convId }: { convId: string }) {
 
   return (
     <>
-      <button
-        type="button"
-        disabled={!canRunConsensus || loading}
-        onClick={() => runConsensus("single")}
-        className={
-          "fixed bottom-24 right-6 z-30 inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-medium text-white shadow-lg transition " +
-          (canRunConsensus
-            ? "bg-gradient-to-r from-purple-500 to-blue-500 shadow-purple-500/30 hover:scale-105"
-            : "cursor-not-allowed bg-[var(--fg-muted)] opacity-70 shadow-black/10")
-        }
-        title={
-          canRunConsensus
-            ? `Synthesize with ${consensusInfo ? getModelAlias(consensusInfo) : "the consensus model"}`
-            : disabledReason
-        }
-      >
-        <Sparkles size={14} />
-        Consensus
-      </button>
+      <div className="fixed bottom-24 right-6 z-30 flex flex-col items-end gap-2">
+        <QualityModeToggle value={qualityMode} onChange={setQualityMode} disabled={loading} />
+        <div className="flex flex-wrap justify-end gap-2">
+          <button
+            type="button"
+            disabled={!canRunConsensus || loading}
+            onClick={() => runConsensus("single")}
+            className={
+              "inline-flex items-center gap-1.5 rounded-full px-4 py-2.5 text-sm font-medium text-white shadow-lg transition " +
+              (canRunConsensus
+                ? "bg-gradient-to-r from-purple-500 to-blue-500 shadow-purple-500/30 hover:scale-105"
+                : "cursor-not-allowed bg-[var(--fg-muted)] opacity-70 shadow-black/10")
+            }
+            title={
+              canRunConsensus
+                ? `Synthesize with ${consensusInfo ? getModelAlias(consensusInfo) : "the consensus model"}`
+                : consensusDisabledReason
+            }
+          >
+            <Sparkles size={14} />
+            Consensus
+          </button>
+          <button
+            type="button"
+            disabled={!canRunCouncil || loading}
+            onClick={() => runConsensus("council")}
+            className={
+              "inline-flex items-center gap-1.5 rounded-full border px-4 py-2.5 text-sm font-medium shadow-lg transition " +
+              (canRunCouncil
+                ? "border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--fg)] shadow-black/15 hover:scale-105 hover:bg-[var(--bg)]"
+                : "cursor-not-allowed border-transparent bg-[var(--fg-muted)] text-white opacity-70 shadow-black/10")
+            }
+            title={
+              canRunCouncil
+                ? "Run a multi-model council with a dedicated final moderator"
+                : councilDisabledReason
+            }
+          >
+            <Users size={14} />
+            Council
+          </button>
+        </div>
+      </div>
 
       {open && (
         <div
@@ -397,7 +452,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
                     {runMode === "council" ? "Model council" : "Consensus answer"}
                   </div>
                   <div className="text-[11px] text-[var(--fg-muted)]">
-                    Synthesized from {responses.length} answers
+                    {qualityMode === "deep" ? "Deep answer" : "Quick answer"} from {responses.length} answers
                   </div>
                 </div>
               </div>
@@ -410,21 +465,24 @@ export function ConsensusButton({ convId }: { convId: string }) {
               </button>
             </div>
 
-            <div className="flex items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-5 py-2">
-              <select
-                value={selectedConsensusModel}
-                onChange={(e) => setConsensusModel(e.target.value)}
-                disabled={loading || consensusChoices.length === 0}
-                className="min-w-0 max-w-[220px] rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] outline-none"
-                title="Consensus model"
-              >
-                {consensusChoices.length === 0 && <option value="">No eligible model</option>}
-                {consensusChoices.map(({ id, model }) => (
-                  <option key={id} value={id}>
-                    {getModelAlias(model)}
-                  </option>
-                ))}
-              </select>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--bg-soft)] px-5 py-2">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <select
+                  value={selectedConsensusModel}
+                  onChange={(e) => setConsensusModel(e.target.value)}
+                  disabled={loading || consensusChoices.length === 0}
+                  className="min-w-0 max-w-[220px] rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] outline-none"
+                  title="Consensus model"
+                >
+                  {consensusChoices.length === 0 && <option value="">No eligible model</option>}
+                  {consensusChoices.map(({ id, model }) => (
+                    <option key={id} value={id}>
+                      {getModelAlias(model)}
+                    </option>
+                  ))}
+                </select>
+                <QualityModeToggle value={qualityMode} onChange={setQualityMode} disabled={loading} compact />
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
@@ -433,7 +491,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
                   className="inline-flex items-center gap-1 rounded-md bg-[var(--accent)] px-2 py-1 text-xs font-medium text-[var(--accent-fg)] hover:opacity-90 disabled:opacity-50"
                 >
                   <Sparkles size={12} />
-                  Rerun
+                  Consensus
                 </button>
                 <button
                   type="button"
@@ -442,8 +500,8 @@ export function ConsensusButton({ convId }: { convId: string }) {
                   className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-xs text-[var(--fg)] hover:border-[var(--border-strong)] disabled:opacity-50"
                   title={
                     canRunCouncil
-                      ? "Run Gemini 2.5, Gemma 4, and Llama 4 as a model council"
-                      : "Model council is available after consensus when at least two council models are available"
+                      ? "Run a multi-model council with a dedicated final moderator"
+                      : councilDisabledReason
                   }
                 >
                   <Users size={12} />
@@ -476,6 +534,45 @@ export function ConsensusButton({ convId }: { convId: string }) {
         </div>
       )}
     </>
+  );
+}
+
+function QualityModeToggle({
+  value,
+  onChange,
+  disabled,
+  compact = false,
+}: {
+  value: QualityMode;
+  onChange: (mode: QualityMode) => void;
+  disabled?: boolean;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={
+        "inline-flex rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5 shadow-sm " +
+        (compact ? "" : "backdrop-blur")
+      }
+      title="Answer depth"
+    >
+      {(["quick", "deep"] as const).map((mode) => (
+        <button
+          key={mode}
+          type="button"
+          disabled={disabled}
+          onClick={() => onChange(mode)}
+          className={
+            "rounded-full px-2.5 py-1 text-[11px] font-medium capitalize transition disabled:opacity-50 " +
+            (value === mode
+              ? "bg-[var(--accent)] text-[var(--accent-fg)]"
+              : "text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)]")
+          }
+        >
+          {mode}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -561,4 +658,74 @@ function formatConsensusError(raw: string, status: number): string {
     return "Ollama says this model requires a subscription. Choose another model/source, or upgrade at https://ollama.com/upgrade.";
   }
   return parsed;
+}
+
+function extractResultMetadata(content: string): {
+  confidence?: string;
+  decisionSummary?: string;
+  scores?: SharedResultScore[];
+} {
+  const sections = extractMarkdownSections(content);
+  const confidence = firstMeaningfulLine(sections.get("confidence"));
+  const decisionSummary = firstMeaningfulLine(sections.get("why this is best"));
+  const scores = extractScores(sections.get("quality scorecard"));
+
+  return {
+    ...(confidence ? { confidence } : {}),
+    ...(decisionSummary ? { decisionSummary } : {}),
+    ...(scores.length > 0 ? { scores } : {}),
+  };
+}
+
+function extractMarkdownSections(content: string): Map<string, string> {
+  const headingPattern = /^\*\*([^*]+)\*\*\s*$/gm;
+  const headings: Array<{ name: string; index: number; end: number }> = [];
+  let match: RegExpExecArray | null;
+
+  while ((match = headingPattern.exec(content)) !== null) {
+    headings.push({
+      name: match[1].trim().toLowerCase(),
+      index: match.index,
+      end: headingPattern.lastIndex,
+    });
+  }
+
+  const sections = new Map<string, string>();
+  for (let i = 0; i < headings.length; i += 1) {
+    const current = headings[i];
+    const next = headings[i + 1];
+    sections.set(current.name, content.slice(current.end, next?.index ?? content.length).trim());
+  }
+  return sections;
+}
+
+function firstMeaningfulLine(value?: string): string | undefined {
+  return value
+    ?.split("\n")
+    .map((line) => line.replace(/^[-*\d.)\s]+/, "").trim())
+    .find(Boolean);
+}
+
+function extractScores(value?: string): SharedResultScore[] {
+  if (!value) return [];
+  const scores: SharedResultScore[] = [];
+  const lines = value
+    .split("\n")
+    .map((line) => line.replace(/^[-*]\s*/, "").trim())
+    .filter(Boolean);
+
+  for (const line of lines) {
+    const match = line.match(/^([^:]+):\s*(.+)$/);
+    if (!match) continue;
+    const detail = match[2].trim();
+    const scoreMatch = detail.match(/\b(?:\d+(?:\.\d+)?\/(?:5|10)|high|medium|low)\b/i);
+    const note = scoreMatch ? detail.replace(scoreMatch[0], "").replace(/^[-\s:]+/, "").trim() : "";
+    scores.push({
+      label: match[1].trim(),
+      value: scoreMatch?.[0] ?? detail,
+      ...(note ? { note } : {}),
+    });
+  }
+
+  return scores;
 }

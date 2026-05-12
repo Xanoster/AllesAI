@@ -33,7 +33,9 @@ Optional hosted Ollama models require an Ollama API key, and some hosted models 
 - **Optional local Ollama models** - refresh installed local models and compare them beside hosted APIs
 - **Optional Ollama models** - compare hosted ollama.com models without adding duplicate columns for the same model family
 - **Shared web search** - Tavily MCP runs once per prompt and gives every selected model the same current source context
-- **Quality consensus answer** - synthesizes model responses with GPT-OSS 120B via Groq
+- **Quality consensus answer** - synthesizes model responses with the best eligible synthesis route
+- **Model council** - runs multiple models through opening, critique, and convergence rounds before a moderated final answer
+- **Quick / deep synthesis** - choose a faster answer or deeper claim-checking with confidence and quality notes
 - **Thinking block** - collapsible `<think>` reasoning display for models that support it
 - **Markdown + syntax highlighting** for code-heavy responses
 - **Persistent history** in `localStorage` - full conversation sidebar with search and delete confirmation
@@ -105,14 +107,14 @@ Browser (Next.js page)
         POST /api/chat  --------------------------------> Groq / Gemini / local Ollama / Ollama API
                        <-------------------------------- NDJSON (delta | usage | done | error)
 
-  Consensus:
-        POST /api/consensus ---------------------------> Groq / GPT-OSS 120B
-                            <-------------------------- NDJSON (delta | done)
+  Consensus / council:
+        POST /api/consensus ---------------------------> selected synthesis model / council models
+                            <-------------------------- NDJSON (delta | status | council_note | done)
 ```
 
 - `/api/chat` - routes to Groq, Gemini, local Ollama, or the Ollama API based on model ID prefix
 - `/api/search` - gets shared web results from Tavily MCP when web search is enabled
-- `/api/consensus` - takes all model responses, synthesizes a best answer via the configured consensus model
+- `/api/consensus` - takes all model responses, runs quick or deep synthesis, and can run a multi-round model council with a dedicated final moderator
 - `/api/ollama/models` - lists installed Ollama models from the configured local base URL
 
 ## Project structure

@@ -40,6 +40,12 @@ export type Message = {
 };
 
 export type SharedResultType = "consensus" | "council";
+export type SharedResultQualityMode = "quick" | "deep";
+export type SharedResultScore = {
+  label: string;
+  value: string;
+  note?: string;
+};
 export type CouncilRoundId = "opening" | "critique" | "convergence" | "synthesis";
 export type CouncilMemberStatus = "queued" | "running" | "done" | "failed" | "replaced";
 
@@ -77,6 +83,10 @@ export type SharedResult = {
   modelId: string;
   content: string;
   finalAnswer?: string;
+  qualityMode?: SharedResultQualityMode;
+  confidence?: string;
+  decisionSummary?: string;
+  scores?: SharedResultScore[];
   createdAt: number;
   updatedAt: number;
   pending?: boolean;
@@ -379,7 +389,12 @@ type ChatState = {
   finishSharedResult: (
     convId: string,
     resultId: string,
-    patch?: Partial<Pick<SharedResult, "content" | "finalAnswer" | "error">>
+    patch?: Partial<
+      Pick<
+        SharedResult,
+        "content" | "finalAnswer" | "error" | "confidence" | "decisionSummary" | "scores"
+      >
+    >
   ) => void;
   startCouncilRound: (convId: string, resultId: string, round: CouncilRoundEntry) => void;
   upsertCouncilStatus: (
