@@ -31,7 +31,7 @@ This file is maintained by the agent. After every task that changes code, config
 ## [2026-05-12] Clarify safe run instructions
 **Changed:** `README.md`
 **Why:** Make the laptop-safe local run command the first documented path.
-**Summary:** Updated Quick start to recommend `npm run dev:safe` from `app/` and moved `npm install` into a conditional step for missing or changed dependencies.
+**Summary:** Updated Quick start to use `npm run dev` from the repository root and moved `npm install` into a conditional step for missing or changed dependencies.
 
 ## [2026-05-12] Add low-impact local run guardrails
 **Changed:** `.vscode/settings.json` (new), `package.json`, `tsconfig.json`, `README.md`
