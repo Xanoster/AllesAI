@@ -13,6 +13,31 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-05-12] Prepare remaining local changes for push
+**Changed:** `AGENTS.md`, `instructions/commit-rules.md`, `src/app/page.tsx`
+**Why:** Publish the remaining local changes without committing secret details or whitespace-only noise.
+**Summary:** Replaced a PAT-specific note with a general secret-handling rule, corrected the feature-branch push rule wording, and removed trailing whitespace from the page entrypoint.
+
+## [2026-05-12] Update direct dependencies
+**Changed:** `package.json`, `package-lock.json`
+**Why:** Bring the app's direct dependencies up to the latest npm releases.
+**Summary:** Updated outdated runtime and dev dependencies, including React, Lucide, Tailwind, Zustand, TypeScript, and Node types. Refreshed the npm lockfile after installation, keeping ESLint on the latest compatible v9 release because ESLint 10 crashes with the current Next ESLint config.
+
+## [2026-05-12] Make npm run dev the local-safe default
+**Changed:** `package.json`, `README.md`
+**Why:** Keep the normal developer command while avoiding the local freeze issue.
+**Summary:** Updated `npm run dev` to use the local stability flags directly and removed the need to run a separate `dev:safe` command. Updated README instructions so the documented startup path is the standard `npm run dev`.
+
+## [2026-05-12] Clarify safe run instructions
+**Changed:** `README.md`
+**Why:** Make the laptop-safe local run command the first documented path.
+**Summary:** Updated Quick start to use `npm run dev` from the repository root and moved `npm install` into a conditional step for missing or changed dependencies.
+
+## [2026-05-12] Add low-impact local run guardrails
+**Changed:** `.vscode/settings.json` (new), `package.json`, `tsconfig.json`, `README.md`
+**Why:** Reduce VS Code and dev-server freeze risk on the user's laptop.
+**Summary:** Added VS Code watcher/search exclusions for generated and dependency folders. Added a safer Webpack-based dev script bound to localhost, TypeScript watch exclusions, and README guidance for avoiding repeated installs and runaway local Node processes.
+
 ## [2026-05-05] Browser OOM fix via non-persisted stream drafts
 **Changed:** `src/lib/stream-drafts.ts` (new), `src/lib/chat-client.ts`, `src/components/ModelColumn.tsx`
 **Why:** Streaming token deltas were being written to persisted chat history on every token, causing browser memory exhaustion.

@@ -55,19 +55,31 @@ Optional hosted Ollama models require an Ollama API key, and some hosted models 
 ## Quick start
 
 ```bash
-cd app
-npm install
 npm run dev
 ```
 
 Open <http://localhost:3000>, click **Settings**, add your API keys, then start chatting.
+
+Only run `npm install` when `node_modules` is missing or `package.json` dependencies changed:
+
+```bash
+npm install
+```
+
+### Local run notes
+
+- Run project commands from the repository root.
+- Do not repeat `npm install` unless `package.json` dependencies changed or `node_modules` is missing.
+- Avoid starting the dev server while many old `node.exe` processes are already running.
+- `npm run dev` is configured for this laptop to bind to `127.0.0.1` and use Webpack, which avoids the local freeze issue while keeping the normal command.
+- Treat installs, builds, formatters, and long-running watchers as approval-only when working through Codex.
 
 For local models, install and run [Ollama](https://ollama.com), enable **Local models** in Settings, refresh installed models, then select the local models from **Models**.
 For hosted Ollama models, enable **Ollama models** in Settings, add your Ollama API key, then choose Ollama from a model's source dropdown.
 
 ### Environment variables (optional server-side keys)
 
-Create `.env.local` in the `app/` folder:
+Create `.env.local` in the repository root:
 
 ```env
 GROQ_API_KEY=gsk_...
