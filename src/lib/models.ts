@@ -310,8 +310,9 @@ export const DEFAULT_SELECTED_MODELS = [
   "gemini-2.5-flash-lite",
 ];
 
-// Dedicated synthesis model - not shown as a comparison column by default.
-export const CONSENSUS_MODEL = "openai/gpt-oss-120b";
+// Preferred synthesis model. The UI falls through to the first eligible route
+// when this provider is unavailable.
+export const CONSENSUS_MODEL = "gemini-2.5-flash-lite";
 
 function cloudPresetToModel(preset: CloudOllamaPreset): ModelInfo {
   return {

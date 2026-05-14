@@ -223,7 +223,12 @@ function ConsensusResult({ result }: { result: SharedResult }) {
   if (!result.content.trim() && result.pending) {
     return <div className="text-xs text-[var(--fg-muted)]">Synthesizing best answer...</div>;
   }
-  return <Markdown source={result.content} />;
+  return (
+    <>
+      <QualitySnapshot result={result} />
+      <Markdown source={result.content} />
+    </>
+  );
 }
 
 function CouncilDebate({ result }: { result: SharedResult }) {
@@ -241,6 +246,7 @@ function CouncilDebate({ result }: { result: SharedResult }) {
           <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-[var(--fg-muted)]">
             Final answer
           </div>
+          <QualitySnapshot result={result} />
           {result.content.trim() ? (
             <Markdown source={result.content} />
           ) : (
@@ -270,6 +276,43 @@ function CouncilDebate({ result }: { result: SharedResult }) {
 
       {showProcessDetails && <CouncilProcess result={result} />}
     </>
+  );
+}
+
+function QualitySnapshot({ result }: { result: SharedResult }) {
+  const scores = result.scores ?? [];
+  const hasSnapshot = result.qualityMode || result.confidence || result.decisionSummary || scores.length > 0;
+  if (!hasSnapshot) return null;
+
+  return (
+    <div className="mb-2 space-y-1.5 rounded-md border border-[var(--border)] bg-[var(--bg)] px-2 py-1.5 text-[11px] text-[var(--fg-muted)]">
+      <div className="flex flex-wrap items-center gap-1.5">
+        {result.qualityMode && (
+          <span className="rounded border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5 font-medium capitalize text-[var(--fg)]">
+            {result.qualityMode}
+          </span>
+        )}
+        {result.confidence && (
+          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+            {result.confidence}
+          </span>
+        )}
+      </div>
+      {result.decisionSummary && <div>{result.decisionSummary}</div>}
+      {scores.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {scores.slice(0, 4).map((score, index) => (
+            <span
+              key={`${score.label}-${score.value}-${index}`}
+              className="rounded border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5"
+              title={score.note}
+            >
+              {score.label}: {score.value}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
