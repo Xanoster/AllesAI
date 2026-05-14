@@ -301,9 +301,9 @@ function QualitySnapshot({ result }: { result: SharedResult }) {
       {result.decisionSummary && <div>{result.decisionSummary}</div>}
       {scores.length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {scores.slice(0, 4).map((score) => (
+          {scores.slice(0, 4).map((score, index) => (
             <span
-              key={`${score.label}-${score.value}`}
+              key={`${score.label}-${score.value}-${index}`}
               className="rounded border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5"
               title={score.note}
             >

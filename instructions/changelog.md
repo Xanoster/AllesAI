@@ -13,6 +13,11 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-05-14] Fix duplicate score key collisions
+**Changed:** `src/components/SharedResultsLane.tsx`
+**Why:** Address PR review feedback about potentially colliding React keys in the quality score badges.
+**Summary:** Updated score badge rendering to include the array index in the key string, preventing collisions when duplicate label/value pairs appear in the scorecard.
+
 ## [2026-05-12] Improve consensus and council quality
 **Changed:** `src/app/api/consensus/route.ts`, `src/components/ConsensusButton.tsx`, `src/components/SharedResultsLane.tsx`, `src/lib/store.ts`, `src/lib/models.ts`, `README.md`
 **Why:** Make consensus/council more useful by adding quality modes, better council moderation, clearer UX access, and current documentation.
