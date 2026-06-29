@@ -42,6 +42,7 @@ const LETTERS: Record<ProviderKey, string> = {
   zhipu:    "Z",
   minimax:  "M",
   ollama:   "O",
+  custom:   "C",
 };
 
 const API_LETTERS: Record<ApiProviderKey, string> = {
@@ -49,6 +50,7 @@ const API_LETTERS: Record<ApiProviderKey, string> = {
   gemini: "G",
   "ollama-cloud": "O",
   "ollama-local": "O",
+  custom: "C",
 };
 
 export function ProviderIcon({

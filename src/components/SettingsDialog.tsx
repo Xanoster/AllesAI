@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import { useChat, useSettings, type LocalOllamaModel } from "@/lib/store";
-import { ExternalLink, RefreshCw, Settings as SettingsIcon, X } from "lucide-react";
+import { type CustomProvider } from "@/lib/models";
+import { uid } from "@/lib/utils";
+import { ExternalLink, Plus, RefreshCw, Settings as SettingsIcon, Trash2, X } from "lucide-react";
 
 function StatusPill({ label, ok }: { label: string; ok: boolean }) {
   return (
@@ -254,6 +256,8 @@ export function SettingsDialog() {
                 </div>
               </section>
 
+              <CustomProvidersSection />
+
               <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div>
@@ -345,5 +349,114 @@ export function SettingsDialog() {
         </div>
       )}
     </>
+  );
+}
+
+function CustomProvidersSection() {
+  const customProviders = useSettings((s) => s.customProviders);
+  const addCustomProvider = useSettings((s) => s.addCustomProvider);
+  const updateCustomProvider = useSettings((s) => s.updateCustomProvider);
+  const removeCustomProvider = useSettings((s) => s.removeCustomProvider);
+
+  const addProvider = () =>
+    addCustomProvider({
+      id: uid(),
+      name: "",
+      baseUrl: "",
+      apiKey: "",
+      models: [],
+    });
+
+  return (
+    <section className="rounded-lg border border-[var(--border)] bg-[var(--bg)] p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs font-semibold text-[var(--fg)]">Custom providers</div>
+          <div className="text-[11px] text-[var(--fg-muted)]">
+            Add any OpenAI-compatible API (OpenRouter, Together, Mistral, vLLM…).
+          </div>
+        </div>
+        <StatusPill label={`${customProviders.length} added`} ok={customProviders.length > 0} />
+      </div>
+
+      <div className="space-y-3">
+        {customProviders.map((provider) => (
+          <CustomProviderEditor
+            key={provider.id}
+            provider={provider}
+            onChange={(patch) => updateCustomProvider(provider.id, patch)}
+            onRemove={() => removeCustomProvider(provider.id)}
+          />
+        ))}
+
+        <button
+          type="button"
+          onClick={addProvider}
+          className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-[11px] text-[var(--fg)] hover:border-[var(--border-strong)]"
+        >
+          <Plus size={12} /> Add custom provider
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function CustomProviderEditor({
+  provider,
+  onChange,
+  onRemove,
+}: {
+  provider: CustomProvider;
+  onChange: (patch: Partial<CustomProvider>) => void;
+  onRemove: () => void;
+}) {
+  const inputClass =
+    "w-full rounded border border-[var(--border)] bg-[var(--bg-soft)] px-2 py-1.5 text-xs text-[var(--fg)] outline-none placeholder:text-[var(--fg-subtle)] focus:border-[var(--border-strong)]";
+  return (
+    <div className="space-y-2 rounded-md border border-[var(--border)] bg-[var(--bg-soft)] p-2.5">
+      <div className="flex items-center gap-2">
+        <input
+          value={provider.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+          placeholder="Provider name (e.g. OpenRouter)"
+          className={inputClass}
+        />
+        <button
+          type="button"
+          onClick={onRemove}
+          className="rounded p-1.5 text-[var(--fg-muted)] hover:bg-[var(--bg)] hover:text-[var(--error)]"
+          title="Remove provider"
+        >
+          <Trash2 size={13} />
+        </button>
+      </div>
+      <input
+        value={provider.baseUrl}
+        onChange={(e) => onChange({ baseUrl: e.target.value })}
+        placeholder="Base URL (e.g. https://openrouter.ai/api/v1)"
+        className={inputClass}
+      />
+      <input
+        type="password"
+        value={provider.apiKey}
+        onChange={(e) => onChange({ apiKey: e.target.value })}
+        placeholder="API key (optional for local servers)"
+        className={inputClass}
+      />
+      <textarea
+        value={provider.models.join("\n")}
+        onChange={(e) =>
+          onChange({
+            models: e.target.value
+              .split(/[\n,]+/)
+              .map((m) => m.trim())
+              .filter(Boolean),
+          })
+        }
+        placeholder="Model IDs, one per line (e.g. gpt-4o-mini)"
+        rows={2}
+        className={inputClass + " resize-y font-mono"}
+      />
+    </div>
   );
 }

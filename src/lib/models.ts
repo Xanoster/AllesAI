@@ -66,6 +66,16 @@ export type CloudOllamaPreset = {
 
 export const OLLAMA_MODEL_PREFIX = "ollama/";
 export const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
+export const CUSTOM_MODEL_PREFIX = "custom/";
+
+// User-defined OpenAI-compatible API provider.
+export type CustomProvider = {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  models: string[];
+};
 
 export const MODEL_CATALOG: ModelInfo[] = [
   {
@@ -191,6 +201,45 @@ export function isCloudOllamaModelId(id: string): boolean {
   return id.startsWith(CLOUD_OLLAMA_PREFIX) && id.length > CLOUD_OLLAMA_PREFIX.length;
 }
 
+export function isCustomModelId(id: string): boolean {
+  return id.startsWith(CUSTOM_MODEL_PREFIX) && id.split("/").length >= 3;
+}
+
+// custom/<providerId>/<modelName> — modelName may itself contain slashes.
+export function parseCustomModelId(id: string): { providerId: string; modelName: string } | null {
+  if (!isCustomModelId(id)) return null;
+  const rest = id.slice(CUSTOM_MODEL_PREFIX.length);
+  const slash = rest.indexOf("/");
+  if (slash < 1 || slash >= rest.length - 1) return null;
+  return { providerId: rest.slice(0, slash), modelName: rest.slice(slash + 1) };
+}
+
+export function toCustomModelId(providerId: string, modelName: string): string {
+  return `${CUSTOM_MODEL_PREFIX}${providerId}/${modelName}`;
+}
+
+export function getCustomProviderModelInfos(providers: CustomProvider[]): ModelInfo[] {
+  return providers.flatMap((provider) =>
+    provider.models.map((modelName) => customModelToInfo(provider, modelName))
+  );
+}
+
+function customModelToInfo(provider: CustomProvider, modelName: string): ModelInfo {
+  return {
+    id: toCustomModelId(provider.id, modelName),
+    label: modelName,
+    shortLabel: modelName,
+    provider: "custom",
+    apiProvider: "custom",
+    familyId: toCustomModelId(provider.id, modelName),
+    free: true,
+    context: 0,
+    category: provider.name,
+    routeHint: `${provider.name} (custom API)`,
+    bestFor: provider.name,
+  };
+}
+
 export function toOllamaModelId(modelName: string): string {
   return `${OLLAMA_MODEL_PREFIX}${modelName}`;
 }
@@ -229,6 +278,24 @@ export function getModel(id: string): ModelInfo | undefined {
     const modelName = getCloudOllamaModelName(id);
     const preset = PRESET_CLOUD_OLLAMA_MODELS.find((model) => model.name === modelName);
     return preset ? cloudPresetToModel(preset) : ollamaNameToModel(modelName, "ollama-cloud");
+  }
+
+  if (isCustomModelId(id)) {
+    const parsed = parseCustomModelId(id);
+    if (!parsed) return undefined;
+    return {
+      id,
+      label: parsed.modelName,
+      shortLabel: parsed.modelName,
+      provider: "custom",
+      apiProvider: "custom",
+      familyId: id,
+      free: true,
+      context: 0,
+      category: "Custom",
+      routeHint: "Custom API",
+      bestFor: "Custom provider",
+    };
   }
 
   return undefined;

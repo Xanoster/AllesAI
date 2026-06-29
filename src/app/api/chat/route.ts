@@ -18,12 +18,14 @@ type RequestBody = {
   ollamaBaseUrl?: string;
   ollamaApiKey?: string;
   ollamaCloudBaseUrl?: string;
+  customProviders?: Array<{ id: string; name: string; baseUrl: string; apiKey: string; models: string[] }>;
 };
 
 const GROQ_URL    = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
 const OLLAMA_PREFIX = "ollama/";
 const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
+const CUSTOM_PREFIX = "custom/";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
 const DEFAULT_CLOUD_OLLAMA_BASE_URL = "https://ollama.com";
 
@@ -136,6 +138,45 @@ export async function POST(req: NextRequest) {
 
   if (!model || !Array.isArray(messages) || messages.length === 0) {
     return new Response("Missing model or messages", { status: 400 });
+  }
+
+  // Custom OpenAI-compatible provider path (custom/<providerId>/<modelName>).
+  if (model.startsWith(CUSTOM_PREFIX)) {
+    const rest = model.slice(CUSTOM_PREFIX.length);
+    const slash = rest.indexOf("/");
+    const providerId = slash > 0 ? rest.slice(0, slash) : "";
+    const customModel = slash > 0 ? rest.slice(slash + 1) : "";
+    const provider = body.customProviders?.find((p) => p.id === providerId);
+    if (!provider || !customModel) {
+      return new Response("Unknown custom provider or model.", { status: 400 });
+    }
+
+    const base = provider.baseUrl.trim().replace(/\/+$/, "");
+    if (!/^https?:\/\//.test(base)) return new Response("Invalid custom provider base URL.", { status: 400 });
+    const endpoint = /\/chat\/completions$/.test(base) ? base : `${base}/chat/completions`;
+    const key = provider.apiKey?.trim();
+
+    const upstream = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(key ? { Authorization: `Bearer ${key}` } : {}),
+      },
+      body: JSON.stringify({ model: customModel, messages, stream: true }),
+    }).catch((err: unknown) => {
+      return new Response(
+        `Custom provider unreachable at ${endpoint}. ${err instanceof Error ? err.message : String(err)}`,
+        { status: 502 }
+      );
+    });
+
+    if (upstream instanceof Response && upstream.status !== 200) {
+      const errBody = await upstream.text().catch(() => `HTTP ${upstream.status}`);
+      return new Response(errBody, { status: upstream.status });
+    }
+    const upstreamRes = upstream as Response;
+    if (!upstreamRes.body) return new Response("No response body", { status: 502 });
+    return streamOpenAiCompatible(upstreamRes);
   }
 
   if (model.startsWith(OLLAMA_PREFIX)) {
@@ -488,7 +529,11 @@ export async function POST(req: NextRequest) {
   const upstreamRes = upstream as Response;
   if (!upstreamRes.body) return new Response("No response body", { status: 502 });
 
-  // Streaming SSE -> NDJSON
+  return streamOpenAiCompatible(upstreamRes);
+}
+
+// SSE (OpenAI-compatible) -> NDJSON. Shared by Groq and custom providers.
+function streamOpenAiCompatible(upstreamRes: Response): Response {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react"
 import {
   MODEL_CATALOG,
   buildModelFamilies,
+  getCustomProviderModelInfos,
   getLocalOllamaModelInfo,
   getModel,
   getModelFamilyId,
@@ -38,6 +39,7 @@ export function ModelPicker({ convId }: { convId: string }) {
   const localEnabled = useSettings((s) => s.localEnabled);
   const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const availableLocalModels = useSettings((s) => s.availableLocalModels);
+  const customProviders = useSettings((s) => s.customProviders);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const enabledSettings = useMemo<ProviderToggleSettings>(
@@ -70,9 +72,14 @@ export function ModelPicker({ convId }: { convId: string }) {
       .map((model) => getLocalOllamaModelInfo(model.name));
   }, [availableLocalModels, localEnabled]);
 
+  const customRoutes = useMemo(
+    () => getCustomProviderModelInfos(customProviders),
+    [customProviders]
+  );
+
   const families = useMemo(
-    () => buildModelFamilies([...baseRoutes, ...hostedOllamaRoutes, ...localRoutes]),
-    [baseRoutes, hostedOllamaRoutes, localRoutes]
+    () => buildModelFamilies([...baseRoutes, ...hostedOllamaRoutes, ...localRoutes, ...customRoutes]),
+    [baseRoutes, hostedOllamaRoutes, localRoutes, customRoutes]
   );
 
   if (!conv) return null;
@@ -542,6 +549,7 @@ function getSourceCounts(modelIds: string[]): Record<ApiProviderKey, number> {
     gemini: 0,
     "ollama-cloud": 0,
     "ollama-local": 0,
+    custom: 0,
   };
 
   for (const id of modelIds) {

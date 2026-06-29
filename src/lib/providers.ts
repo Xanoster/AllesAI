@@ -8,13 +8,15 @@ export type ProviderKey =
   | "gemini"
   | "zhipu"
   | "minimax"
-  | "ollama";
+  | "ollama"
+  | "custom";
 
 export type ApiProviderKey =
   | "groq"
   | "gemini"
   | "ollama-cloud"
-  | "ollama-local";
+  | "ollama-local"
+  | "custom";
 
 export type ProviderInfo = {
   key: ProviderKey;
@@ -40,6 +42,7 @@ export const PROVIDERS: Record<ProviderKey, ProviderInfo> = {
   zhipu:    { key: "zhipu",    name: "Zhipu",    color: "#2563eb" },
   minimax:  { key: "minimax",  name: "MiniMax",  color: "#111827" },
   ollama:   { key: "ollama",   name: "Ollama",   color: "#374151" },
+  custom:   { key: "custom",   name: "Custom",   color: "#7c3aed" },
 };
 
 export const API_PROVIDERS: Record<ApiProviderKey, ApiProviderInfo> = {
@@ -67,6 +70,12 @@ export const API_PROVIDERS: Record<ApiProviderKey, ApiProviderInfo> = {
     shortName: "Local",
     color: "#374151",
   },
+  custom: {
+    key: "custom",
+    name: "Custom",
+    shortName: "Custom",
+    color: "#7c3aed",
+  },
 };
 
 export const PROVIDER_ORDER: ProviderKey[] = [
@@ -80,6 +89,7 @@ export const PROVIDER_ORDER: ProviderKey[] = [
   "zhipu",
   "minimax",
   "ollama",
+  "custom",
 ];
 
 export const API_PROVIDER_ORDER: ApiProviderKey[] = [
@@ -87,4 +97,5 @@ export const API_PROVIDER_ORDER: ApiProviderKey[] = [
   "gemini",
   "ollama-cloud",
   "ollama-local",
+  "custom",
 ];

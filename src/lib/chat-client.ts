@@ -201,6 +201,7 @@ export async function streamModel(opts: {
         ollamaBaseUrl: settings.ollamaBaseUrl || undefined,
         ollamaApiKey: settings.ollamaApiKey || undefined,
         ollamaCloudBaseUrl: settings.ollamaCloudBaseUrl || undefined,
+        customProviders: settings.customProviders.length ? settings.customProviders : undefined,
       }),
     });
 

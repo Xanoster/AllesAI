@@ -13,8 +13,11 @@ import {
   getModel,
   getModelFamilyId,
   getPresetCloudOllamaModelInfos,
+  getCustomProviderModelInfos,
   isCloudOllamaModelId,
+  isCustomModelId,
   isOllamaModelId,
+  type CustomProvider,
   type ModelInfo,
 } from "./models";
 import { isRemovedModelName } from "./model-rules";
@@ -166,6 +169,10 @@ export type SettingsState = {
   setOllamaCloudBaseUrl: (url: string) => void;
   availableLocalModels: LocalOllamaModel[];
   setAvailableLocalModels: (models: LocalOllamaModel[]) => void;
+  customProviders: CustomProvider[];
+  addCustomProvider: (provider: CustomProvider) => void;
+  updateCustomProvider: (id: string, patch: Partial<CustomProvider>) => void;
+  removeCustomProvider: (id: string) => void;
 
   theme: Theme;
   setTheme: (t: Theme) => void;
@@ -212,6 +219,17 @@ export const useSettings = create<SettingsState>()(
       setOllamaCloudBaseUrl: (url) => set({ ollamaCloudBaseUrl: url }),
       availableLocalModels: [],
       setAvailableLocalModels: (models) => set({ availableLocalModels: models }),
+      customProviders: [],
+      addCustomProvider: (provider) =>
+        set((s) => ({ customProviders: [...s.customProviders, provider] })),
+      updateCustomProvider: (id, patch) =>
+        set((s) => ({
+          customProviders: s.customProviders.map((p) =>
+            p.id === id ? { ...p, ...patch } : p
+          ),
+        })),
+      removeCustomProvider: (id) =>
+        set((s) => ({ customProviders: s.customProviders.filter((p) => p.id !== id) })),
 
       theme: "dark",
       setTheme: (t) => set({ theme: t }),
@@ -219,7 +237,7 @@ export const useSettings = create<SettingsState>()(
     }),
     {
       name: "alles-ai-settings",
-      version: 4,
+      version: 5,
       migrate: (persistedState) => {
         const state = persistedState as Partial<SettingsState>;
         return {
@@ -238,6 +256,7 @@ export const useSettings = create<SettingsState>()(
           ollamaApiKey: state.ollamaApiKey ?? "",
           cloudOllamaEnabled: state.cloudOllamaEnabled ?? false,
           ollamaCloudBaseUrl: state.ollamaCloudBaseUrl ?? "https://ollama.com",
+          customProviders: state.customProviders ?? [],
           theme: state.theme ?? "dark",
         };
       },
@@ -257,6 +276,7 @@ export const useSettings = create<SettingsState>()(
         ollamaApiKey: state.ollamaApiKey,
         cloudOllamaEnabled: state.cloudOllamaEnabled,
         ollamaCloudBaseUrl: state.ollamaCloudBaseUrl,
+        customProviders: state.customProviders,
         theme: state.theme,
       }),
     }
@@ -287,6 +307,7 @@ export function filterEnabledModelIds(
 function getEnabledRoutes(settings: SettingsState): ModelInfo[] {
   return [
     ...MODEL_CATALOG,
+    ...getCustomProviderModelInfos(settings.customProviders),
     ...(settings.cloudOllamaEnabled ? getPresetCloudOllamaModelInfos() : []),
     ...(settings.localEnabled
       ? settings.availableLocalModels
@@ -463,6 +484,7 @@ export function normalizeModelId(modelId: string): string | null {
 
   const normalized = MODEL_ID_ALIASES[modelId] ?? modelId;
   if (isRemovedModelName(normalized)) return null;
+  if (isCustomModelId(normalized)) return normalized;
   if (isOllamaModelId(normalized)) return normalized;
   if (isCloudOllamaModelId(normalized)) {
     return VALID_CLOUD_MODEL_NAMES.has(getCloudOllamaModelName(normalized)) ? normalized : null;
