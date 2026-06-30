@@ -13,6 +13,51 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-06-30] Use delimiter in prompt to split answer from analysis
+**Changed:** `src/app/api/consensus/route.ts`, `src/components/SharedResultsLane.tsx`
+**Why:** Section parsing via regex was fragile — the model output didn't match expected format, hiding the answer and showing broken content. Needed a reliable way to separate the answer from the analysis sections.
+**Summary:** Changed DEEP_SECTIONS/QUICK_SECTIONS prompts to output the answer first, then a `---` delimiter, then analysis sections. `ConsensusResult` now splits at `\n---\n` to show the answer as main content and the analysis sections inside the expandable details. Fallback: if no delimiter found, full content is shown as the answer.
+
+## [2026-06-30] Fix consensus: answer first, analysis in expandable details
+**Changed:** `src/components/SharedResultsLane.tsx`, `src/app/api/consensus/route.ts`
+**Why:** User wanted the consensus answer clean by default but with access to the full quality analysis (claim checks, conflicts, quality scorecard, etc.) when needed.
+**Summary:** Restored DEEP_SECTIONS prompt so the model outputs all analysis sections. In ConsensusResult, split the content: "Best answer" section renders as the main answer; remaining sections (Why this is best, Claim checks, Agreement, Disagreement, Confidence, Quality scorecard, etc.) go into a collapsible "Show analysis details" section below.
+
+## [2026-06-30] Pass web search flag to consensus so it weights web-sourced claims
+**Changed:** `src/app/api/consensus/route.ts`, `src/components/ConsensusButton.tsx`
+**Why:** When only one model uses Tavily web context correctly and others disagree, consensus dismissed the correct info. The synthesis model had no way to know web search was active.
+**Summary:** Added `webSearch` flag from settings to the consensus request body. `formatResponseBlock` now includes a preamble noting web search was active. `temporalGrounding` tells the synthesis model to weight responses with specific web-sourced details over unsourced assertions. Added `webSearch` setting access in ConsensusButton.
+
+## [2026-06-30] Remove "Deep" label and meta sections from consensus UI
+**Changed:** `src/components/ConsensusButton.tsx`, `src/components/SharedResultsLane.tsx`, `src/app/api/consensus/route.ts`
+**Why:** User wanted a clean answer-only display — no "Deep consensus answer" title, no meta-analysis sections (Best answer, Why this is best, Claim checks, Quality scorecard, etc.) in the output.
+**Summary:** Changed modal title from "Deep consensus answer" to "Consensus answer". Simplified DEEP/QUICK_SECTIONS prompts to output only the answer without meta sections. Removed qualityMode badge from QualitySnapshot. Internally the deep analysis still runs.
+
+## [2026-06-30] Fix consensus rejecting correct Tavily results as hallucination
+**Changed:** `src/app/api/consensus/route.ts`
+**Why:** The temporalGrounding() instruction told the synthesis model "Agreement alone is not proof", causing it to dismiss consistent web-sourced claims (e.g., Daveigh Chase's death via Tavily) as hallucinations in favor of its outdated training data.
+**Summary:** Replaced "Agreement alone is not proof" with instruction to trust multi-model agreement on breaking-news facts as meaningful corroboration. Explicitly states synthesis model's knowledge cutoff may predate live Tavily results.
+
+## [2026-06-30] Ground consensus in the runtime date
+**Changed:** `src/app/api/consensus/route.ts`
+**Why:** Prevent consensus and council models from rejecting current news as fictional because their training cutoff predates the runtime date.
+**Summary:** Added an authoritative runtime-date instruction to every consensus and council prompt. The judge now prioritizes cited live-web evidence over unsupported model-memory objections while remaining explicit that it cannot independently verify supplied citations.
+
+## [2026-06-30] Remove regenerate-answer icon
+**Changed:** `src/components/ModelColumn.tsx`
+**Why:** Remove the regenerate-answer action from each model header.
+**Summary:** Removed the regenerate icon button while retaining retry behavior for failed responses.
+
+## [2026-06-30] Live web browsing for all models + auto web search
+**Changed:** `src/app/api/chat/route.ts`, `src/lib/chat-client.ts`, `src/app/api/search/route.ts`, `src/components/SettingsDialog.tsx`
+**Why:** Reduce reliance on Tavily/Gemini for fresh answers, let the agent decide when to search, and give every model real "browse and extract" web content (OpenCode-CLI style) without depending on Gemini's small quota.
+**Summary:** Gemini now browses live via its native Google Search grounding tool when web search is active, while non-Gemini models (Groq, OpenCode, Ollama) use Tavily with deepened page-content extraction (top results carry near-full page text instead of short snippets). Web search now auto-enables for time-sensitive prompts even when the toggle is off, failing soft to model knowledge unless the user explicitly requested it; a retrieval failure no longer blocks Gemini.
+
+## [2026-06-30] Add OpenCode Zen API provider
+**Changed:** `src/lib/providers.ts`, `src/lib/models.ts`, `src/lib/store.ts`, `src/lib/model-rules.ts`, `src/lib/chat-client.ts`, `src/app/api/chat/route.ts`, `src/app/api/consensus/route.ts`, `src/components/ProviderIcon.tsx`, `src/components/SettingsDialog.tsx`, `src/components/ModelPicker.tsx`, `src/components/SingleModelPicker.tsx`, `src/components/ConsensusButton.tsx`, `src/app/page.tsx`, `src/components/Composer.tsx`, `src/components/HeroComposer.tsx`
+**Why:** Add OpenCode Zen as a new free OpenAI-compatible API provider.
+**Summary:** Wired OpenCode Zen end-to-end (provider metadata, settings toggle + API key, model catalog with 5 free models, chat/consensus routing via the `opencode/` prefix to the Zen gateway, picker source pill, and provider icon). Key resolves from settings or `OpenCode_API_Key`/`OPENCODE_API_KEY` env, with a persisted-store migration to v6.
+
 ## [2026-06-30] Add pre-push env secret check
 **Changed:** `instructions/commit-rules.md`, `instructions/changelog.md`
 **Why:** Make secret handling explicit before any git push.

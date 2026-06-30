@@ -125,29 +125,33 @@ export function SynthesisHistoryButton({
 export function SharedResultCard({
   result,
   compact = false,
+  noHeader = false,
 }: {
   result: SharedResult;
   compact?: boolean;
+  noHeader?: boolean;
 }) {
   const isCouncil = result.type === "council";
   return (
     <article className="rounded-lg border border-[var(--border)] bg-[var(--bg-elevated)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="rounded-md bg-[var(--bg-soft)] p-1 text-[var(--fg-muted)]">
-            {isCouncil ? <Users size={13} /> : <Sparkles size={13} />}
-          </span>
-          <div className="min-w-0">
-            <div className="truncate text-xs font-semibold text-[var(--fg)]">
-              {result.title}
-            </div>
-            <div className="text-[10px] text-[var(--fg-muted)]">
-              {formatTime(result.createdAt)}
+      {!noHeader && (
+        <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="rounded-md bg-[var(--bg-soft)] p-1 text-[var(--fg-muted)]">
+              {isCouncil ? <Users size={13} /> : <Sparkles size={13} />}
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-xs font-semibold text-[var(--fg)]">
+                {result.title}
+              </div>
+              <div className="text-[10px] text-[var(--fg-muted)]">
+                {formatTime(result.createdAt)}
+              </div>
             </div>
           </div>
+          <ResultState result={result} />
         </div>
-        <ResultState result={result} />
-      </div>
+      )}
 
       <div className={compact ? "space-y-3 px-3 py-2" : "space-y-3 p-3"}>
         {result.error && (
@@ -223,10 +227,56 @@ function ConsensusResult({ result }: { result: SharedResult }) {
   if (!result.content.trim() && result.pending) {
     return <div className="text-xs text-[var(--fg-muted)]">Synthesizing best answer...</div>;
   }
+
+  const divider = "\n---\n";
+  const dividerIdx = result.content.indexOf(divider);
+  const answerPart = dividerIdx >= 0 ? result.content.slice(0, dividerIdx).trim() : result.content;
+  const detailsPart = dividerIdx >= 0 ? result.content.slice(dividerIdx + divider.length).trim() : "";
+
+  const hasExtraDetails = result.confidence || result.decisionSummary || (result.scores?.length ?? 0) > 0 || (result.participants?.length ?? 0) > 0;
+
   return (
     <>
-      <QualitySnapshot result={result} />
-      <Markdown source={result.content} />
+      <Markdown source={answerPart} />
+      {(detailsPart || hasExtraDetails) && (
+        <details className="group mt-3 overflow-hidden rounded-lg border border-[var(--border)]">
+          <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs font-medium text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)] [&::-webkit-details-marker]:hidden">
+            <ChevronRight size={14} className="transition-transform group-open:rotate-90" />
+            Show analysis details
+          </summary>
+          <div className="border-t border-[var(--border)] px-3 py-2 space-y-2 text-[11px] text-[var(--fg-muted)]">
+            {detailsPart && <Markdown source={detailsPart} />}
+            {detailsPart && hasExtraDetails && <hr className="border-[var(--border)]" />}
+            {result.participants && result.participants.length > 0 && (
+              <div>
+                <span className="font-medium text-[var(--fg)]">Models: </span>
+                <span className="text-[var(--fg-muted)]">{result.participants.join(", ")}</span>
+              </div>
+            )}
+            {result.confidence && (
+              <div>
+                <span className="font-medium text-[var(--fg)]">Confidence: </span>
+                <span className="text-emerald-600">{result.confidence}</span>
+              </div>
+            )}
+            {result.decisionSummary && (
+              <div>
+                <span className="font-medium text-[var(--fg)]">Why this is best: </span>
+                <span className="text-[var(--fg-muted)]">{result.decisionSummary}</span>
+              </div>
+            )}
+            {result.scores && result.scores.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {result.scores.slice(0, 4).map((score, i) => (
+                  <span key={`${score.label}-${i}`} className="rounded border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5" title={score.note}>
+                    {score.label}: {score.value}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </details>
+      )}
     </>
   );
 }
@@ -281,23 +331,16 @@ function CouncilDebate({ result }: { result: SharedResult }) {
 
 function QualitySnapshot({ result }: { result: SharedResult }) {
   const scores = result.scores ?? [];
-  const hasSnapshot = result.qualityMode || result.confidence || result.decisionSummary || scores.length > 0;
+  const hasSnapshot = result.confidence || result.decisionSummary || scores.length > 0;
   if (!hasSnapshot) return null;
 
   return (
     <div className="mb-2 space-y-1.5 rounded-md border border-[var(--border)] bg-[var(--bg)] px-2 py-1.5 text-[11px] text-[var(--fg-muted)]">
-      <div className="flex flex-wrap items-center gap-1.5">
-        {result.qualityMode && (
-          <span className="rounded border border-[var(--border)] bg-[var(--bg-soft)] px-1.5 py-0.5 font-medium capitalize text-[var(--fg)]">
-            {result.qualityMode}
-          </span>
-        )}
-        {result.confidence && (
-          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700">
-            {result.confidence}
-          </span>
-        )}
-      </div>
+      {result.confidence && (
+        <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700">
+          {result.confidence}
+        </span>
+      )}
       {result.decisionSummary && <div>{result.decisionSummary}</div>}
       {scores.length > 0 && (
         <div className="flex flex-wrap gap-1">

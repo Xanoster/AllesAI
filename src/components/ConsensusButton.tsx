@@ -33,7 +33,7 @@ type ConsensusChoice = {
 };
 
 type ConsensusMode = "single" | "council";
-type QualityMode = "quick" | "deep";
+
 
 type ConsensusStreamEvent =
   | { type: "delta"; text?: string }
@@ -56,10 +56,13 @@ export function ConsensusButton({ convId }: { convId: string }) {
   const groqEnabled = useSettings((s) => s.groqEnabled);
   const geminiApiKey = useSettings((s) => s.geminiApiKey);
   const geminiEnabled = useSettings((s) => s.geminiEnabled);
+  const opencodeApiKey = useSettings((s) => s.opencodeApiKey);
+  const opencodeEnabled = useSettings((s) => s.opencodeEnabled);
   const ollamaBaseUrl = useSettings((s) => s.ollamaBaseUrl);
   const ollamaApiKey = useSettings((s) => s.ollamaApiKey);
   const ollamaCloudBaseUrl = useSettings((s) => s.ollamaCloudBaseUrl);
   const localEnabled = useSettings((s) => s.localEnabled);
+  const webSearchEnabled = useSettings((s) => s.webSearch);
   const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const availableLocalModels = useSettings((s) => s.availableLocalModels);
   const consensusModel = useSettings((s) => s.consensusModel);
@@ -70,10 +73,11 @@ export function ConsensusButton({ convId }: { convId: string }) {
     () => ({
       groqEnabled,
       geminiEnabled,
+      opencodeEnabled,
       cloudOllamaEnabled,
       localEnabled,
     }),
-    [cloudOllamaEnabled, geminiEnabled, groqEnabled, localEnabled]
+    [cloudOllamaEnabled, geminiEnabled, groqEnabled, localEnabled, opencodeEnabled]
   );
   const accessSettings = useMemo(
     () => ({
@@ -81,11 +85,13 @@ export function ConsensusButton({ convId }: { convId: string }) {
       groqEnabled,
       geminiApiKey,
       geminiEnabled,
+      opencodeApiKey,
+      opencodeEnabled,
       ollamaApiKey,
       cloudOllamaEnabled,
       localEnabled,
     }),
-    [apiKey, cloudOllamaEnabled, geminiApiKey, geminiEnabled, groqEnabled, localEnabled, ollamaApiKey]
+    [apiKey, cloudOllamaEnabled, geminiApiKey, geminiEnabled, groqEnabled, localEnabled, ollamaApiKey, opencodeApiKey, opencodeEnabled]
   );
 
   const [open, setOpen] = useState(false);
@@ -94,7 +100,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runMode, setRunMode] = useState<ConsensusMode>("single");
-  const [qualityMode, setQualityMode] = useState<QualityMode>("quick");
+
   const [activeResultId, setActiveResultId] = useState<string | null>(null);
   const activeResult = useChat((s) =>
     activeResultId
@@ -256,16 +262,10 @@ export function ConsensusButton({ convId }: { convId: string }) {
       resultId = startSharedResult(convId, {
         type: mode === "council" ? "council" : "consensus",
         title:
-          mode === "council"
-            ? qualityMode === "deep"
-              ? "Deep model council"
-              : "Model council"
-            : qualityMode === "deep"
-              ? "Deep consensus answer"
-              : "Consensus answer",
+          mode === "council" ? "Model council" : "Consensus answer",
         modelId: mode === "council" ? "model-council" : selectedConsensusModel,
         content: "",
-        qualityMode,
+        qualityMode: "deep" as const,
         pending: true,
         participants: mode === "council" ? councilPrimaryIds.map((id) => getModelAlias(id)) : undefined,
         statuses:
@@ -287,7 +287,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode,
-          qualityMode,
+          qualityMode: "deep",
           prompt: latestPrompt,
           responses,
           consensusModel: selectedConsensusModel,
@@ -301,9 +301,11 @@ export function ConsensusButton({ convId }: { convId: string }) {
                   .filter((id) => id !== selectedConsensusModel),
           apiKey,
           geminiApiKey,
+          opencodeApiKey,
           ollamaBaseUrl,
           ollamaApiKey,
           ollamaCloudBaseUrl,
+          webSearch: webSearchEnabled,
         }),
       });
       if (!res.ok || !res.body) {
@@ -390,7 +392,6 @@ export function ConsensusButton({ convId }: { convId: string }) {
   return (
     <>
       <div className="fixed bottom-24 right-6 z-30 flex flex-col items-end gap-2">
-        <QualityModeToggle value={qualityMode} onChange={setQualityMode} disabled={loading} />
         <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
@@ -452,7 +453,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
                     {runMode === "council" ? "Model council" : "Consensus answer"}
                   </div>
                   <div className="text-[11px] text-[var(--fg-muted)]">
-                    {qualityMode === "deep" ? "Deep answer" : "Quick answer"} from {responses.length} answers
+                    Consensus from {responses.length} answers
                   </div>
                 </div>
               </div>
@@ -481,7 +482,6 @@ export function ConsensusButton({ convId }: { convId: string }) {
                     </option>
                   ))}
                 </select>
-                <QualityModeToggle value={qualityMode} onChange={setQualityMode} disabled={loading} compact />
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -522,7 +522,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
                 </div>
               )}
               {activeResult ? (
-                <SharedResultCard result={activeResult} compact />
+                <SharedResultCard result={activeResult} compact noHeader />
               ) : (
                 text && <Markdown source={text} />
               )}
@@ -537,44 +537,7 @@ export function ConsensusButton({ convId }: { convId: string }) {
   );
 }
 
-function QualityModeToggle({
-  value,
-  onChange,
-  disabled,
-  compact = false,
-}: {
-  value: QualityMode;
-  onChange: (mode: QualityMode) => void;
-  disabled?: boolean;
-  compact?: boolean;
-}) {
-  return (
-    <div
-      className={
-        "inline-flex rounded-full border border-[var(--border)] bg-[var(--bg-elevated)] p-0.5 shadow-sm " +
-        (compact ? "" : "backdrop-blur")
-      }
-      title="Answer depth"
-    >
-      {(["quick", "deep"] as const).map((mode) => (
-        <button
-          key={mode}
-          type="button"
-          disabled={disabled}
-          onClick={() => onChange(mode)}
-          className={
-            "rounded-full px-2.5 py-1 text-[11px] font-medium capitalize transition disabled:opacity-50 " +
-            (value === mode
-              ? "bg-[var(--accent)] text-[var(--accent-fg)]"
-              : "text-[var(--fg-muted)] hover:bg-[var(--bg-soft)] hover:text-[var(--fg)]")
-          }
-        >
-          {mode}
-        </button>
-      ))}
-    </div>
-  );
-}
+
 
 function getEligibleChoice(
   id: string,

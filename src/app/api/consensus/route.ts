@@ -5,6 +5,8 @@ export const runtime = "nodejs";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";
+const OPENCODE_URL = "https://opencode.ai/zen/v1/chat/completions";
+const OPENCODE_PREFIX = "opencode/";
 const OLLAMA_PREFIX = "ollama/";
 const CLOUD_OLLAMA_PREFIX = "ollama-cloud/";
 const DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434";
@@ -31,12 +33,14 @@ type RequestBody = {
   moderatorModels?: string[];
   apiKey?: string;
   geminiApiKey?: string;
+  opencodeApiKey?: string;
   ollamaBaseUrl?: string;
   ollamaApiKey?: string;
   ollamaCloudBaseUrl?: string;
+  webSearch?: boolean;
 };
 
-type ProviderKey = "gemini" | "ollama" | "ollama-cloud" | "groq";
+type ProviderKey = "gemini" | "ollama" | "ollama-cloud" | "opencode" | "groq";
 type QualityMode = "quick" | "deep";
 type CouncilRoundName = "opening" | "critique" | "convergence";
 type CouncilRound = {
@@ -72,16 +76,24 @@ const QUALITY_RUBRIC = `Use this quality rubric before deciding:
 - Missing context: say what cannot be known from the provided answers.
 - Final recommendation: give one clear answer, not a vote tally.`;
 
-const QUICK_SECTIONS = `Output exactly these sections:
-**Best answer**
+function temporalGrounding(): string {
+  const currentDate = new Date().toISOString().slice(0, 10);
+  return `The authoritative runtime date is ${currentDate}.
+Treat that date as true even if it is later than your training data or knowledge cutoff. Never call it a future or fictional date.
+Web search context (Tavily) was provided to all models. Despite having the same web results, some models may ignore them and fall back to outdated training data. Your knowledge cutoff predates the runtime date, so current events in the answers may be unknown to you.
+Compare model answers carefully: responses with specific details, dates, names, or citations likely used the web context and should be weighted more heavily than unsourced assertions or vague denials from models that ignored it. When multiple models correctly report the same web-sourced fact, that is strong corroboration. When only a minority correctly reports a fact that has the specificity of a web citation, prefer it over the majority. Do not claim that you independently verified a citation: you can only assess the evidence shown here.`;
+}
+
+const QUICK_SECTIONS = `First output the synthesized answer. Then output "---" on its own line. Then output these analysis sections:
+
 **Why this is best**
 **Confidence**
 **Agreement**
 **Disagreement**
 **Model notes**`;
 
-const DEEP_SECTIONS = `Output exactly these sections:
-**Best answer**
+const DEEP_SECTIONS = `First output the synthesized answer. Then output "---" on its own line. Then output these analysis sections:
+
 **Why this is best**
 **Confidence**
 **Quality scorecard**
@@ -94,11 +106,12 @@ const DEEP_SECTIONS = `Output exactly these sections:
 function synthesisPrompt(mode: QualityMode): string {
   const deepInstruction =
     mode === "deep"
-      ? `Deep answer mode is enabled. Claim-check the most important statements against only the supplied model answers, identify unsupported or conflicting claims, and explain why the winning answer won. Use the confidence section for a concise confidence label plus why.`
-      : `Quick answer mode is enabled. Be concise, but still use the rubric and include a short confidence statement.`;
+      ? `Deep answer mode is enabled. Claim-check the most important statements against only the supplied model answers, identify unsupported or conflicting claims, and explain why the winning answer won.`
+      : `Quick answer mode is enabled. Be concise, but still use the rubric.`;
 
   return `You are a careful consensus synthesizer.
 ${MODEL_NAME_RULES}
+${temporalGrounding()}
 Do not copy one model's full answer. Compare, summarize, decide, and explain the logic.
 ${QUALITY_RUBRIC}
 ${deepInstruction}
@@ -113,6 +126,7 @@ function councilPositionPrompt(mode: QualityMode): string {
       : "Quick answer mode is enabled. Keep the note short while naming the most important strength and risk.";
 
   return `You are one member of a model council.
+${temporalGrounding()}
 Use your short model name when referring to yourself.
 Write visible public debate notes for the user. Do not include hidden chain-of-thought or private reasoning.
 Keep notes concise and concrete. Name agreements and disagreements with short model names only.
@@ -124,11 +138,12 @@ Do not produce the final answer alone.`;
 function councilSynthesisPrompt(mode: QualityMode): string {
   const deepInstruction =
     mode === "deep"
-      ? `Deep answer mode is enabled. Use the council notes to claim-check important statements, surface confidence, and explain why the final answer beat plausible alternatives.`
-      : `Quick answer mode is enabled. Keep the final verdict concise while preserving meaningful uncertainty.`;
+      ? `Deep answer mode is enabled. Use the council notes to claim-check important statements and explain why the final answer beat plausible alternatives.`
+      : `Quick answer mode is enabled. Keep the final verdict concise.`;
 
   return `You are the final moderator of a model council.
 ${MODEL_NAME_RULES}
+${temporalGrounding()}
 Synthesize the council positions and the original model answers. Do not copy one model's full answer.
 ${QUALITY_RUBRIC}
 ${deepInstruction}
@@ -183,12 +198,14 @@ function providerFor(modelId: string): ProviderKey {
   if (modelId.startsWith("gemini")) return "gemini";
   if (modelId.startsWith(CLOUD_OLLAMA_PREFIX)) return "ollama-cloud";
   if (modelId.startsWith(OLLAMA_PREFIX)) return "ollama";
+  if (modelId.startsWith(OPENCODE_PREFIX)) return "opencode";
   return "groq";
 }
 
 function modelNameForProvider(modelId: string): string {
   if (modelId.startsWith(CLOUD_OLLAMA_PREFIX)) return modelId.slice(CLOUD_OLLAMA_PREFIX.length);
   if (modelId.startsWith(OLLAMA_PREFIX)) return modelId.slice(OLLAMA_PREFIX.length);
+  if (modelId.startsWith(OPENCODE_PREFIX)) return modelId.slice(OPENCODE_PREFIX.length);
   return modelId.replace(/^groq\//, "");
 }
 
@@ -196,6 +213,7 @@ function keyFor(body: RequestBody, modelId: string): string | undefined {
   const provider = providerFor(modelId);
   if (provider === "gemini") return body.geminiApiKey || process.env.GEMINI_API_KEY;
   if (provider === "groq") return body.apiKey || process.env.GROQ_API_KEY;
+  if (provider === "opencode") return body.opencodeApiKey || process.env.OpenCode_API_Key || process.env.OPENCODE_API_KEY;
   return body.ollamaApiKey || process.env.OLLAMA_API_KEY;
 }
 
@@ -218,15 +236,18 @@ function truncateResponses(responses: ResponseEntry[]): ResponseEntry[] {
   }));
 }
 
-function formatResponseBlock(prompt: string, responses: ResponseEntry[]): string {
-  return [
+function formatResponseBlock(prompt: string, responses: ResponseEntry[], webSearch?: boolean): string {
+  const parts: string[] = [
     `User question:\n${prompt}`,
     "",
+    webSearch ? "Web search context (Tavily) was provided to all models. Some models may still ignore it and fall back to outdated training data — evaluate carefully which responses actually used the web results." : "",
+    webSearch ? "" : "",
     "Model answers:",
     ...truncateResponses(shortResponses(responses)).map(
       (response) => `\n--- ${response.model} ---\n${response.content || "(empty)"}`
     ),
-  ].join("\n");
+  ];
+  return parts.filter(Boolean).join("\n");
 }
 
 function toGeminiBody(messages: ChatMessage[]) {
@@ -306,6 +327,18 @@ async function fetchUpstream(body: RequestBody, modelId: string, messages: ChatM
       body: JSON.stringify({ model, messages, stream }),
     }).catch((err: unknown) => {
       throw new UpstreamError(`${provider === "ollama-cloud" ? "Ollama API" : "Ollama"} is unreachable. ${err instanceof Error ? err.message : String(err)}`, 502);
+    });
+  }
+
+  if (provider === "opencode") {
+    const key = keyFor(body, modelId);
+    if (!key) throw new UpstreamError("No OpenCode API key. Add OpenCode_API_Key to .env.local or Settings.", 401);
+    return fetch(OPENCODE_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({ model, messages, temperature: 0.3, max_tokens: stream ? 4096 : 1200, stream }),
+    }).catch((err: unknown) => {
+      throw new UpstreamError(`OpenCode Zen is unreachable. ${err instanceof Error ? err.message : String(err)}`, 502);
     });
   }
 
@@ -467,7 +500,7 @@ async function streamText(body: RequestBody, modelId: string, messages: ChatMess
 function synthesisMessages(body: RequestBody): ChatMessage[] {
   return [
     { role: "system", content: synthesisPrompt(qualityModeFor(body.qualityMode)) },
-    { role: "user", content: formatResponseBlock(body.prompt, body.responses) },
+    { role: "user", content: formatResponseBlock(body.prompt, body.responses, body.webSearch) },
   ];
 }
 
@@ -555,7 +588,7 @@ async function runCouncil(body: RequestBody): Promise<Response> {
     const fallbackQueue = fallbacks.filter((id) => !candidates.includes(id));
     const usedModels = new Set(candidates);
     const allNotes: CouncilNote[] = [];
-    const baseBlock = formatResponseBlock(body.prompt, body.responses);
+    const baseBlock = formatResponseBlock(body.prompt, body.responses, body.webSearch);
     let participants = [...candidates];
 
     for (const candidate of participants) {
