@@ -360,6 +360,82 @@ async function fetchWebContext(prompt: string, signal: AbortSignal): Promise<Web
   };
 }
 
+const ENHANCE_SYSTEM_PROMPT = [
+  "You are an expert prompt engineer. Rewrite the user's prompt so an AI assistant returns a clearer, more accurate, and more useful answer.",
+  "Preserve the user's original intent and language. Make the request specific and well-structured: add helpful context, constraints, and a desired output format when they improve the result.",
+  "Do not invent facts, do not add placeholders the user must fill in, and do not answer the prompt yourself.",
+  "Output ONLY the improved prompt text - no preamble, quotes, labels, or explanation.",
+].join("\n");
+
+function stripThinking(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/i, "")
+    .trim();
+}
+
+// Calls a single model via /api/chat to rewrite a prompt into a stronger version.
+// Reuses the chat endpoint so every provider route is supported automatically.
+export async function enhancePrompt(
+  modelId: string,
+  prompt: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const settings = useSettings.getState();
+  const resolvedModelId = normalizeModelId(modelId) ?? modelId;
+
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: resolvedModelId,
+      messages: [
+        { role: "system", content: ENHANCE_SYSTEM_PROMPT },
+        { role: "user", content: prompt },
+      ],
+      apiKey: settings.apiKey || undefined,
+      geminiApiKey: settings.geminiApiKey || undefined,
+      ollamaBaseUrl: settings.ollamaBaseUrl || undefined,
+      ollamaApiKey: settings.ollamaApiKey || undefined,
+      ollamaCloudBaseUrl: settings.ollamaCloudBaseUrl || undefined,
+      customProviders: settings.customProviders.length ? settings.customProviders : undefined,
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const raw = await res.text().catch(() => res.statusText);
+    throw new Error(formatChatError(raw, res.status, res.statusText, resolvedModelId));
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let out = "";
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line) continue;
+      let evt: { type?: string; text?: string; message?: string } | null = null;
+      try {
+        evt = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (evt?.type === "delta" && typeof evt.text === "string") out += evt.text;
+      else if (evt?.type === "error" && evt.message) throw new Error(evt.message);
+    }
+  }
+
+  return stripThinking(out);
+}
+
 export function sendPromptToAll(
   convId: string,
   prompt: string

@@ -1,14 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { sendPromptToAll } from "@/lib/chat-client";
+import { enhancePrompt, sendPromptToAll } from "@/lib/chat-client";
 import {
   filterEnabledModelIds,
   useChat,
   useSettings,
   type ProviderToggleSettings,
 } from "@/lib/store";
-import { ArrowUp, Globe, Square, X } from "lucide-react";
+import { ArrowUp, Globe, Loader2, Sparkles, Square, X } from "lucide-react";
 import { getModel } from "@/lib/models";
 
 export function Composer({ convId }: { convId: string }) {
@@ -22,6 +22,9 @@ export function Composer({ convId }: { convId: string }) {
   const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const [text, setText] = useState("");
   const ctrlRef = useRef<AbortController | null>(null);
+  const [enhancing, setEnhancing] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+  const enhanceCtrlRef = useRef<AbortController | null>(null);
   const enabledSettings: ProviderToggleSettings = {
     groqEnabled,
     geminiEnabled,
@@ -54,6 +57,28 @@ export function Composer({ convId }: { convId: string }) {
     ctrlRef.current = null;
   };
 
+  const enhanceModel = focusedModel ?? visibleSelectedModels[0] ?? null;
+
+  const onEnhance = async () => {
+    const t = text.trim();
+    if (!t || !enhanceModel || enhancing || anyPending) return;
+    setEnhanceError(null);
+    setEnhancing(true);
+    const ctrl = new AbortController();
+    enhanceCtrlRef.current = ctrl;
+    try {
+      const improved = await enhancePrompt(enhanceModel, t, ctrl.signal);
+      if (improved) setText(improved);
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        setEnhanceError(err instanceof Error ? err.message : "Could not enhance prompt.");
+      }
+    } finally {
+      if (enhanceCtrlRef.current === ctrl) enhanceCtrlRef.current = null;
+      setEnhancing(false);
+    }
+  };
+
   return (
     <form onSubmit={onSubmit} className="border-t border-[var(--border)] bg-[var(--bg-soft)] px-4 pb-4 pt-3">
       {focusedModel && (
@@ -71,6 +96,20 @@ export function Composer({ convId }: { convId: string }) {
         </div>
       )}
 
+      {enhanceError && (
+        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-md border border-[var(--error)]/40 bg-[var(--error)]/10 px-2.5 py-1 text-[11px] text-[var(--error)]">
+          <span className="font-medium">{enhanceError}</span>
+          <button
+            type="button"
+            onClick={() => setEnhanceError(null)}
+            className="ml-auto rounded p-0.5 hover:bg-[var(--bg)]"
+            title="Dismiss"
+          >
+            <X size={11} />
+          </button>
+        </div>
+      )}
+
       <div className="mx-auto flex max-w-3xl items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm transition focus-within:border-[var(--border-strong)] focus-within:shadow-md">
         <button
           type="button"
@@ -82,6 +121,19 @@ export function Composer({ convId }: { convId: string }) {
           }
         >
           <Globe size={15} />
+        </button>
+        <button
+          type="button"
+          onClick={onEnhance}
+          disabled={!text.trim() || !enhanceModel || enhancing || anyPending}
+          title={
+            enhanceModel
+              ? "Enhance prompt - let AI rewrite it for a better answer"
+              : "Select a model to enhance the prompt"
+          }
+          className="shrink-0 rounded-full p-1.5 text-[var(--fg-subtle)] transition hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--fg-subtle)]"
+        >
+          {enhancing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
         </button>
         <textarea
           value={text}

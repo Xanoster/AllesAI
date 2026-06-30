@@ -1,14 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import { sendPromptToAll } from "@/lib/chat-client";
+import { useRef, useState } from "react";
+import { enhancePrompt, sendPromptToAll } from "@/lib/chat-client";
 import {
   filterEnabledModelIds,
   useChat,
   useSettings,
   type ProviderToggleSettings,
 } from "@/lib/store";
-import { ArrowUp, Globe } from "lucide-react";
+import { ArrowUp, Globe, Loader2, Sparkles, X } from "lucide-react";
 import { ProviderIcon } from "./ProviderIcon";
 import { getModel } from "@/lib/models";
 
@@ -21,6 +21,9 @@ export function HeroComposer({ convId }: { convId: string }) {
   const localEnabled = useSettings((s) => s.localEnabled);
   const cloudOllamaEnabled = useSettings((s) => s.cloudOllamaEnabled);
   const [text, setText] = useState("");
+  const [enhancing, setEnhancing] = useState(false);
+  const [enhanceError, setEnhanceError] = useState<string | null>(null);
+  const enhanceCtrlRef = useRef<AbortController | null>(null);
 
   if (!conv) return null;
   const enabledSettings: ProviderToggleSettings = {
@@ -37,6 +40,28 @@ export function HeroComposer({ convId }: { convId: string }) {
     if (!t) return;
     sendPromptToAll(convId, t);
     setText("");
+  };
+
+  const enhanceModel = visibleSelectedModels[0] ?? null;
+
+  const onEnhance = async () => {
+    const t = text.trim();
+    if (!t || !enhanceModel || enhancing) return;
+    setEnhanceError(null);
+    setEnhancing(true);
+    const ctrl = new AbortController();
+    enhanceCtrlRef.current = ctrl;
+    try {
+      const improved = await enhancePrompt(enhanceModel, t, ctrl.signal);
+      if (improved) setText(improved);
+    } catch (err) {
+      if ((err as { name?: string })?.name !== "AbortError") {
+        setEnhanceError(err instanceof Error ? err.message : "Could not enhance prompt.");
+      }
+    } finally {
+      if (enhanceCtrlRef.current === ctrl) enhanceCtrlRef.current = null;
+      setEnhancing(false);
+    }
   };
 
   return (
@@ -69,6 +94,20 @@ export function HeroComposer({ convId }: { convId: string }) {
           </div>
         </div>
 
+        {enhanceError && (
+          <div className="mb-2 flex items-center gap-2 rounded-md border border-[var(--error)]/40 bg-[var(--error)]/10 px-2.5 py-1 text-[11px] text-[var(--error)]">
+            <span className="font-medium">{enhanceError}</span>
+            <button
+              type="button"
+              onClick={() => setEnhanceError(null)}
+              className="ml-auto rounded p-0.5 hover:bg-[var(--bg)]"
+              title="Dismiss"
+            >
+              <X size={11} />
+            </button>
+          </div>
+        )}
+
         <form onSubmit={onSubmit}>
           <div className="flex items-center gap-2 rounded-3xl border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-2 shadow-sm transition focus-within:border-[var(--border-strong)] focus-within:shadow-md">
             <button
@@ -81,6 +120,19 @@ export function HeroComposer({ convId }: { convId: string }) {
               }
             >
               <Globe size={15} />
+            </button>
+            <button
+              type="button"
+              onClick={onEnhance}
+              disabled={!text.trim() || !enhanceModel || enhancing}
+              title={
+                enhanceModel
+                  ? "Enhance prompt - let AI rewrite it for a better answer"
+                  : "Select a model to enhance the prompt"
+              }
+              className="shrink-0 rounded-full p-1.5 text-[var(--fg-subtle)] transition hover:text-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:text-[var(--fg-subtle)]"
+            >
+              {enhancing ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />}
             </button>
             <textarea
               autoFocus
