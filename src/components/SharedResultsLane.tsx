@@ -212,7 +212,7 @@ function ResultState({ result }: { result: SharedResult }) {
     );
   }
   return (
-    <span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 px-1.5 py-0.5 text-[10px] text-emerald-600 dark:text-emerald-400">
+    <span className="inline-flex items-center gap-1 rounded border border-emerald-500/30 px-1.5 py-0.5 text-[10px] text-emerald-600">
       <CheckCircle2 size={10} />
       done
     </span>
@@ -293,7 +293,7 @@ function QualitySnapshot({ result }: { result: SharedResult }) {
           </span>
         )}
         {result.confidence && (
-          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700 dark:text-emerald-300">
+          <span className="rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-emerald-700">
             {result.confidence}
           </span>
         )}
@@ -397,10 +397,10 @@ function statusLabel(status: CouncilMemberStatus): string {
 }
 
 function statusClass(status: CouncilMemberStatus): string {
-  if (status === "running") return "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300";
-  if (status === "done") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (status === "running") return "border-blue-500/30 bg-blue-500/10 text-blue-700";
+  if (status === "done") return "border-emerald-500/30 bg-emerald-500/10 text-emerald-700";
   if (status === "failed") return "border-[var(--error)]/40 bg-[var(--bg-soft)] text-[var(--error)]";
-  if (status === "replaced") return "border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-300";
+  if (status === "replaced") return "border-amber-500/40 bg-amber-500/10 text-amber-700";
   return "border-[var(--border)] bg-[var(--bg-soft)] text-[var(--fg-muted)]";
 }
 

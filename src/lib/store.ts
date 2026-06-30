@@ -119,8 +119,6 @@ export type Conversation = {
   sharedResults?: SharedResult[];
 };
 
-type Theme = "light" | "dark";
-
 export type LocalOllamaModel = {
   name: string;
   model: string;
@@ -173,10 +171,6 @@ export type SettingsState = {
   addCustomProvider: (provider: CustomProvider) => void;
   updateCustomProvider: (id: string, patch: Partial<CustomProvider>) => void;
   removeCustomProvider: (id: string) => void;
-
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  toggleTheme: () => void;
 };
 
 export type ProviderToggleSettings = Pick<
@@ -186,7 +180,7 @@ export type ProviderToggleSettings = Pick<
 
 export const useSettings = create<SettingsState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       apiKey: "",
       setApiKey: (k) => set({ apiKey: k }),
       groqEnabled: true,
@@ -230,10 +224,6 @@ export const useSettings = create<SettingsState>()(
         })),
       removeCustomProvider: (id) =>
         set((s) => ({ customProviders: s.customProviders.filter((p) => p.id !== id) })),
-
-      theme: "dark",
-      setTheme: (t) => set({ theme: t }),
-      toggleTheme: () => set({ theme: get().theme === "dark" ? "light" : "dark" }),
     }),
     {
       name: "alles-ai-settings",
@@ -257,7 +247,6 @@ export const useSettings = create<SettingsState>()(
           cloudOllamaEnabled: state.cloudOllamaEnabled ?? false,
           ollamaCloudBaseUrl: state.ollamaCloudBaseUrl ?? "https://ollama.com",
           customProviders: state.customProviders ?? [],
-          theme: state.theme ?? "dark",
         };
       },
       partialize: (state) => ({
@@ -277,7 +266,6 @@ export const useSettings = create<SettingsState>()(
         cloudOllamaEnabled: state.cloudOllamaEnabled,
         ollamaCloudBaseUrl: state.ollamaCloudBaseUrl,
         customProviders: state.customProviders,
-        theme: state.theme,
       }),
     }
   )

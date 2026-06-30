@@ -40,7 +40,6 @@ Optional hosted Ollama models require an Ollama API key, and some hosted models 
 - **Markdown + syntax highlighting** for code-heavy responses
 - **Persistent history** in `localStorage` - full conversation sidebar with search and delete confirmation
 - **Compact columns** for dense desktop comparisons
-- **Dark / light theme**
 - **Stop streaming** per-column or globally
 
 ## Tech stack
@@ -139,7 +138,6 @@ src/
     ProviderIcon.tsx      # Brand icon tiles
     SettingsDialog.tsx    # API key + system prompt settings
     Sidebar.tsx           # Conversation history sidebar
-    ThemeToggle.tsx       # Dark/light toggle + applier
     Markdown.tsx          # Memoized markdown renderer
   lib/
     models.ts             # Model catalog + provider groups

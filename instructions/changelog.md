@@ -13,6 +13,11 @@ This file is maintained by the agent. After every task that changes code, config
 
 ---
 
+## [2026-06-30] Add pre-push env secret check
+**Changed:** `instructions/commit-rules.md`, `instructions/changelog.md`
+**Why:** Make secret handling explicit before any git push.
+**Summary:** Added a mandatory pre-push check for `.env*` files so secrets, API keys, and tokens are verified as local-only before pushing. Recorded the instruction update in the changelog.
+
 ## [2026-05-14] Fix duplicate score key collisions
 **Changed:** `src/components/SharedResultsLane.tsx`
 **Why:** Address PR review feedback about potentially colliding React keys in the quality score badges.

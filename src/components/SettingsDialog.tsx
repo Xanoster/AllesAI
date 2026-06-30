@@ -11,7 +11,7 @@ function StatusPill({ label, ok }: { label: string; ok: boolean }) {
     <span
       className={
         "rounded-full px-2 py-0.5 text-[10px] font-medium " +
-        (ok ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-[var(--bg-soft)] text-[var(--fg-muted)]")
+        (ok ? "bg-emerald-500/10 text-emerald-600" : "bg-[var(--bg-soft)] text-[var(--fg-muted)]")
       }
     >
       {label}

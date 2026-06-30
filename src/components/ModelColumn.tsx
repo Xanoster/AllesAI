@@ -427,13 +427,13 @@ export function ModelColumn({
                 {sourceName}
               </span>
               {info?.free && (
-                <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-emerald-600 dark:text-emerald-400">
+                <span className="shrink-0 rounded border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-emerald-600">
                   free
                 </span>
               )}
               {info && !info.free && (
                 <span
-                  className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-amber-700 dark:text-amber-300"
+                  className="shrink-0 rounded border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[9px] font-medium uppercase leading-none text-amber-700"
                   title={info.accessHint ?? "This route may require paid access."}
                 >
                   {info.accessLabel ?? "paid"}

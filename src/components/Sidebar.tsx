@@ -9,7 +9,6 @@ import {
   Search,
   Trash2,
 } from "lucide-react";
-import { ThemeToggle } from "./ThemeToggle";
 import { SettingsDialog } from "./SettingsDialog";
 
 function dayBucket(ts: number): string {
@@ -86,7 +85,6 @@ export function Sidebar() {
           <div className="flex items-center justify-between border-b border-[var(--border)] px-3 py-2.5">
             <img src="/AllesAI.png" alt="Alles AI" className="h-8 w-auto origin-left scale-[2.0] object-contain mix-blend-multiply" />
             <div className="flex items-center gap-1">
-              <ThemeToggle />
               <button
                 onClick={() => setCollapsed(true)}
                 className="rounded-md p-1.5 text-[var(--fg-muted)] hover:bg-[var(--bg-elevated)] hover:text-[var(--fg)]"

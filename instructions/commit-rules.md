@@ -13,4 +13,5 @@
 - Never push to main branch directly; create a feature branch and push to that only.
 - Check `git status` and `git log --oneline`.
 - Confirm branch and remote are correct.
+- Check `.env*` files before every push and make sure no secrets, API keys, or tokens are staged or mentioned in the commit.
 - Push only with the `Xanoster` account.

@@ -21,26 +21,6 @@
   --error: #dc2626;
 }
 
-.dark {
-  --bg: #09090b;
-  --bg-soft: #0f0f10;
-  --bg-elevated: #131316;
-  --fg: #ededed;
-  --fg-muted: #a1a1aa;
-  --fg-subtle: #71717a;
-  --border: #27272a;
-  --border-strong: #3f3f46;
-  --accent: #3b82f6;
-  --accent-fg: #ffffff;
-  --code-bg: #18181b;
-  --code-fg: #e4e4e7;
-  --user-bubble: rgba(59, 130, 246, 0.10);
-  --user-border: rgba(59, 130, 246, 0.25);
-  --asst-bubble: rgba(24, 24, 27, 0.7);
-  --asst-border: #27272a;
-  --error: #f87171;
-}
-
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--fg);
@@ -97,23 +77,6 @@ html, body {
 .prose-chat table { border-collapse: collapse; margin: 0.5rem 0; font-size: 0.78rem; }
 .prose-chat th, .prose-chat td { border: 1px solid var(--border); padding: 0.25rem 0.5rem; }
 .prose-chat hr { border-color: var(--border); margin: 0.75rem 0; }
-
-/* highlight.js dark mode overrides (base import is github light) */
-.dark .hljs { background: #0d1117 !important; color: #c9d1d9 !important; }
-.dark .hljs-keyword, .dark .hljs-operator { color: #ff7b72 !important; }
-.dark .hljs-string, .dark .hljs-template-string { color: #a5d6ff !important; }
-.dark .hljs-number, .dark .hljs-literal { color: #79c0ff !important; }
-.dark .hljs-comment, .dark .hljs-quote { color: #8b949e !important; }
-.dark .hljs-function, .dark .hljs-title { color: #d2a8ff !important; }
-.dark .hljs-built_in { color: #ffa657 !important; }
-.dark .hljs-type, .dark .hljs-class, .dark .hljs-attr { color: #79c0ff !important; }
-.dark .hljs-tag, .dark .hljs-name { color: #7ee787 !important; }
-.dark .hljs-variable { color: #ffa657 !important; }
-.dark .hljs-selector-class, .dark .hljs-selector-id { color: #79c0ff !important; }
-.dark .hljs-meta { color: #7ee787 !important; }
-.dark .hljs-link, .dark .hljs-params { color: #a5d6ff !important; }
-.dark .hljs-section { color: #79c0ff !important; }
-.dark .hljs-doctag { color: #ff7b72 !important; }
 
 /* Scrollbar */
 *::-webkit-scrollbar { width: 8px; height: 8px; }

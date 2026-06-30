@@ -310,7 +310,7 @@ function ModelFamilyRow({
           {family.vision && <span className="text-blue-500">vision</span>}
           {family.thinking && <span className="text-purple-500">thinking</span>}
           {activeUnavailable && (
-            <span className="text-yellow-600 dark:text-yellow-300">
+            <span className="text-yellow-600">
               source off
             </span>
           )}
@@ -456,10 +456,10 @@ function RouteDropdown({
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1 text-[9px] text-[var(--fg-subtle)]">
                       {route.free ? (
-                        <span className="text-emerald-600 dark:text-emerald-400">free</span>
+                        <span className="text-emerald-600">free</span>
                       ) : (
                         <span
-                          className="text-amber-700 dark:text-amber-300"
+                          className="text-amber-700"
                           title={route.accessHint ?? "This route may require paid access."}
                         >
                           {route.accessLabel ?? "paid"}
@@ -467,7 +467,7 @@ function RouteDropdown({
                       )}
                       {route.paramSize && <span>{route.paramSize}</span>}
                       {route.bestFor && <span>{route.bestFor}</span>}
-                      {unavailable && <span className="text-yellow-600 dark:text-yellow-300">{unavailable}</span>}
+                      {unavailable && <span className="text-yellow-600">{unavailable}</span>}
                     </div>
                   </div>
                 </button>

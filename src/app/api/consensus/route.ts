@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getModelAlias } from "@/lib/model-rules";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 const GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/models";

@@ -15,7 +15,6 @@ import { ConsensusButton } from "@/components/ConsensusButton";
 import { SynthesisHistoryButton } from "@/components/SharedResultsLane";
 import { ModelPicker } from "@/components/ModelPicker";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { ThemeApplier, ThemeToggle } from "@/components/ThemeToggle";
 import { KeyRound } from "lucide-react";
 import { getModel } from "@/lib/models";
 
@@ -129,7 +128,6 @@ export default function Home() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
-      <ThemeApplier />
       <Sidebar />
       <main className="flex min-w-0 flex-1 flex-col">
         {/* Top bar */}
@@ -166,14 +164,11 @@ export default function Home() {
             <div className="md:hidden">
               <SettingsDialog />
             </div>
-            <div className="md:hidden">
-              <ThemeToggle />
-            </div>
           </div>
         </header>
 
         {setupNeeds.length > 0 && (
-          <div className="flex items-center gap-2 border-b border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
+          <div className="flex items-center gap-2 border-b border-yellow-500/40 bg-yellow-500/10 px-4 py-2 text-xs text-yellow-700">
             <KeyRound size={14} />
             <span>
               In Settings, add or enable: {setupNeeds.join(", ")}.
