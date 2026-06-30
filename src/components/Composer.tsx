@@ -81,6 +81,15 @@ export function Composer({ convId }: { convId: string }) {
 
   return (
     <form onSubmit={onSubmit} className="border-t border-[var(--border)] bg-[var(--bg-soft)] px-4 pb-4 pt-3">
+      {conv?.chatMode === "auto" && visibleSelectedModels[0] && (
+        <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] text-[var(--accent)]">
+          <Sparkles size={11} />
+          <span className="font-medium">
+            Auto chose {getModel(visibleSelectedModels[0])?.label ?? visibleSelectedModels[0]}
+          </span>
+          <span className="text-[var(--fg-muted)]">- start a new chat to re-pick</span>
+        </div>
+      )}
       {focusedModel && (
         <div className="mx-auto mb-2 flex max-w-3xl items-center gap-2 rounded-md border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-2.5 py-1 text-[11px] text-[var(--accent)]">
           <span className="font-medium">Focused on {focusedInfo?.label ?? focusedModel}</span>

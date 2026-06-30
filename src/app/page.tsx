@@ -14,8 +14,11 @@ import { HeroComposer } from "@/components/HeroComposer";
 import { ConsensusButton } from "@/components/ConsensusButton";
 import { SynthesisHistoryButton } from "@/components/SharedResultsLane";
 import { ModelPicker } from "@/components/ModelPicker";
+import { ModeSelector } from "@/components/ModeSelector";
+import { SingleModelPicker } from "@/components/SingleModelPicker";
 import { SettingsDialog } from "@/components/SettingsDialog";
-import { KeyRound } from "lucide-react";
+import { ProviderIcon } from "@/components/ProviderIcon";
+import { KeyRound, ChevronDown } from "lucide-react";
 import { getModel } from "@/lib/models";
 
 export default function Home() {
@@ -27,6 +30,7 @@ export default function Home() {
 
   const setSelectedModels = useChat((s) => s.setSelectedModels);
   const dragSrc = useRef<string | null>(null);
+  const [singlePickerOpen, setSinglePickerOpen] = useState(false);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
   const conversations = useChat((s) => s.conversations);
   const activeId = useChat((s) => s.activeId);
@@ -125,6 +129,11 @@ export default function Home() {
   const hasMessages = !!conv && visibleSelectedModels.some(
     (id) => (conv.threads[id]?.messages.length ?? 0) > 0
   );
+  const isAuto = conv?.chatMode === "auto";
+  const isSingle = conv?.chatMode === "single";
+  const singleModel = isSingle ? getModel(visibleSelectedModels[0] ?? "") : undefined;
+  // In single mode, show the model cards when explicitly opened or none chosen yet.
+  const showSinglePicker = !!conv && isSingle && (singlePickerOpen || visibleSelectedModels.length === 0);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-[var(--bg)] text-[var(--fg)]">
@@ -142,20 +151,48 @@ export default function Home() {
               </h1>
               <span className="truncate text-xs text-[var(--fg-muted)]">
                 {conv
-                  ? visibleFocusedModel
-                    ? "- Focused on 1 model"
-                    : `- ${visibleSelectedModels.length} model${visibleSelectedModels.length === 1 ? "" : "s"}`
+                  ? isAuto
+                    ? "- Auto-pick"
+                    : visibleFocusedModel
+                      ? "- Focused on 1 model"
+                      : `- ${visibleSelectedModels.length} model${visibleSelectedModels.length === 1 ? "" : "s"}`
                 : ""}
               </span>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {conv && (
+              <ModeSelector
+                convId={conv.id}
+                onSelect={(mode) => {
+                  setSinglePickerOpen(mode === "single");
+                }}
+              />
+            )}
+            {conv && (
               <div className="hidden md:block">
                 <SynthesisHistoryButton convId={conv.id} />
               </div>
             )}
-            {conv && <ModelPicker convId={conv.id} />}
+            {conv && conv.chatMode === "multi" && <ModelPicker convId={conv.id} />}
+            {conv && isSingle && (
+              <button
+                type="button"
+                onClick={() => setSinglePickerOpen((v) => !v)}
+                className="inline-flex max-w-[200px] items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-elevated)] px-2.5 py-1.5 text-xs text-[var(--fg)] hover:border-[var(--border-strong)]"
+                title="Choose model"
+              >
+                {singleModel ? (
+                  <>
+                    <ProviderIcon provider={singleModel.provider} size={14} />
+                    <span className="truncate">{singleModel.label}</span>
+                  </>
+                ) : (
+                  <span>Choose model</span>
+                )}
+                <ChevronDown size={12} className="text-[var(--fg-muted)]" />
+              </button>
+            )}
             {conv && (
               <div className="md:hidden">
                 <SynthesisHistoryButton convId={conv.id} compact />
@@ -176,22 +213,26 @@ export default function Home() {
           </div>
         )}
 
-        {conv && visibleSelectedModels.length === 0 && (
+        {conv && showSinglePicker && (
+          <SingleModelPicker convId={conv.id} onPick={() => setSinglePickerOpen(false)} />
+        )}
+
+        {conv && !isAuto && !isSingle && visibleSelectedModels.length === 0 && (
           <div className="flex flex-1 items-center justify-center text-sm text-[var(--fg-muted)]">
             No active models selected. Open <strong className="mx-1">Models</strong> above or enable a provider in Settings.
           </div>
         )}
 
-        {conv && visibleSelectedModels.length > 0 && !hasMessages && (
+        {conv && !showSinglePicker && (isAuto || visibleSelectedModels.length > 0) && !hasMessages && (
           <HeroComposer convId={conv.id} />
         )}
 
-        {conv && visibleSelectedModels.length > 0 && hasMessages && (
+        {conv && !showSinglePicker && visibleSelectedModels.length > 0 && hasMessages && (
           <>
             <div className="flex min-h-0 flex-1 divide-x divide-[var(--border)] overflow-x-auto">
               {columnModelIds.map((id) => (
                 <ModelColumn
-                  key={id}
+                  key={isSingle ? "single-column" : id}
                   convId={conv.id}
                   modelId={id}
                   onDragStart={() => handleDragStart(id)}
@@ -203,7 +244,7 @@ export default function Home() {
               {/* When focused, show ghost preview of others as small read-only column? Skip for now. */}
             </div>
             <Composer convId={conv.id} />
-            <ConsensusButton convId={conv.id} />
+            {columnModelIds.length > 1 && <ConsensusButton convId={conv.id} />}
           </>
         )}
       </main>

@@ -19,6 +19,7 @@ type OllamaTagsResponse = {
   }>;
 };
 
+
 function resolveOllamaBaseUrl(raw?: string | null) {
   const input = (raw || DEFAULT_OLLAMA_BASE_URL).trim();
   try {

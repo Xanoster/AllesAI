@@ -1,7 +1,7 @@
 "use client";
 
-import { filterEnabledModelIds, useChat, useSettings, type Message, normalizeModelId } from "./store";
-import { isCloudOllamaModelId, isOllamaModelId } from "./models";
+import { filterEnabledModelIds, getEnabledRoutes, useChat, useSettings, type Message, normalizeModelId } from "./store";
+import { isCloudOllamaModelId, isOllamaModelId, type ModelInfo } from "./models";
 import { streamDraftKey, useStreamDrafts } from "./stream-drafts";
 
 // Per-model abort controllers for mid-stream stopping
@@ -436,6 +436,126 @@ export async function enhancePrompt(
   return stripThinking(out);
 }
 
+// Candidate models the auto-router can choose from (one route per family).
+function autoRouterCandidates(): ModelInfo[] {
+  const settings = useSettings.getState();
+  const seen = new Set<string>();
+  const out: ModelInfo[] = [];
+  for (const route of getEnabledRoutes(settings)) {
+    if (seen.has(route.familyId)) continue;
+    seen.add(route.familyId);
+    out.push(route);
+  }
+  return out;
+}
+
+const ROUTER_SYSTEM_PROMPT = [
+  "You are a router that selects the single best AI model to answer the user's question.",
+  "Choose strictly from the provided candidate list, using each model's strengths and category.",
+  "Prefer reasoning/coding models for hard logic or code, vision models for images, and fast general models for simple chat.",
+  "Reply with ONLY the exact model id from the list - no quotes, labels, or explanation.",
+].join("\n");
+
+// Picks the best model id for a prompt by asking a fast model to classify it.
+// Falls back to the first candidate (or provided fallback) if routing fails.
+export async function pickBestModel(
+  prompt: string,
+  fallback?: string,
+  signal?: AbortSignal
+): Promise<string> {
+  const candidates = autoRouterCandidates();
+  if (candidates.length === 0) return fallback ?? "";
+  if (candidates.length === 1) return candidates[0].id;
+
+  const settings = useSettings.getState();
+  const routerModel =
+    normalizeModelId(settings.consensusModel) ??
+    candidates.find((c) => c.apiProvider === "gemini")?.id ??
+    candidates[0].id;
+
+  const list = candidates
+    .map((c) => `- ${c.id} | ${c.label} | ${c.category}${c.bestFor ? ` | best for: ${c.bestFor}` : ""}`)
+    .join("\n");
+  const userMessage = `Candidate models:\n${list}\n\nUser question:\n${prompt}\n\nBest model id:`;
+
+  try {
+    const raw = await callModelOnce(
+      routerModel,
+      [
+        { role: "system", content: ROUTER_SYSTEM_PROMPT },
+        { role: "user", content: userMessage },
+      ],
+      signal
+    );
+    const answer = raw.trim();
+    // Prefer an exact id match, then a substring match.
+    const exact = candidates.find((c) => c.id === answer);
+    if (exact) return exact.id;
+    const contained = candidates.find((c) => answer.includes(c.id));
+    if (contained) return contained.id;
+    const byLabel = candidates.find((c) => answer.toLowerCase().includes(c.label.toLowerCase()));
+    if (byLabel) return byLabel.id;
+  } catch {
+    // fall through to fallback
+  }
+  return fallback ?? candidates[0].id;
+}
+
+// Calls a single model via /api/chat and returns its full text response.
+async function callModelOnce(
+  modelId: string,
+  messages: ChatRequestMessage[],
+  signal?: AbortSignal
+): Promise<string> {
+  const settings = useSettings.getState();
+  const resolvedModelId = normalizeModelId(modelId) ?? modelId;
+  const res = await fetch("/api/chat", {
+    method: "POST",
+    signal,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: resolvedModelId,
+      messages,
+      apiKey: settings.apiKey || undefined,
+      geminiApiKey: settings.geminiApiKey || undefined,
+      ollamaBaseUrl: settings.ollamaBaseUrl || undefined,
+      ollamaApiKey: settings.ollamaApiKey || undefined,
+      ollamaCloudBaseUrl: settings.ollamaCloudBaseUrl || undefined,
+      customProviders: settings.customProviders.length ? settings.customProviders : undefined,
+    }),
+  });
+
+  if (!res.ok || !res.body) {
+    const raw = await res.text().catch(() => res.statusText);
+    throw new Error(formatChatError(raw, res.status, res.statusText, resolvedModelId));
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let out = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let idx: number;
+    while ((idx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, idx).trim();
+      buffer = buffer.slice(idx + 1);
+      if (!line) continue;
+      let evt: { type?: string; text?: string; message?: string } | null = null;
+      try {
+        evt = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (evt?.type === "delta" && typeof evt.text === "string") out += evt.text;
+      else if (evt?.type === "error" && evt.message) throw new Error(evt.message);
+    }
+  }
+  return stripThinking(out);
+}
+
 export function sendPromptToAll(
   convId: string,
   prompt: string
@@ -445,16 +565,91 @@ export function sendPromptToAll(
   const settings = useSettings.getState();
   const conv = state.conversations[convId];
   if (!conv) return ctrl;
+
+  // Auto mode picks the single best model, then chats with just that one.
+  if (conv.chatMode === "auto") {
+    void runAutoPrompt(convId, prompt, ctrl);
+    return ctrl;
+  }
+
   // Respect focus mode and disabled models
   const disabled = new Set(conv.disabledModels ?? []);
   const candidateTargets = (conv.focusedModel ? [conv.focusedModel] : conv.selectedModels)
     .filter((id) => !disabled.has(id));
   const targets = filterEnabledModelIds(candidateTargets, settings);
   state.addUserMessage(convId, prompt, targets);
+  streamTargets(convId, prompt, targets, ctrl, settings);
+  return ctrl;
+}
+
+// Auto mode: route the first message to the best model, then reuse it so the
+// conversation stays coherent. A new chat re-picks for the next question.
+async function runAutoPrompt(convId: string, prompt: string, ctrl: AbortController) {
+  const settings = useSettings.getState();
+  const conv = useChat.getState().conversations[convId];
+  if (!conv) return;
+  const enabledSelected = filterEnabledModelIds(conv.selectedModels, settings);
+  const hasAnswers = enabledSelected.some((id) =>
+    (conv.threads[id]?.messages ?? []).some((m) => m.role === "assistant")
+  );
+
+  // Continuing an auto chat: keep the chosen model, skip routing for low latency.
+  if (enabledSelected.length >= 1 && hasAnswers) {
+    useChat.getState().addUserMessage(convId, prompt, [enabledSelected[0]]);
+    streamTargets(convId, prompt, [enabledSelected[0]], ctrl, settings);
+    return;
+  }
+
+  const provisional = enabledSelected[0] ?? autoRouterCandidates()[0]?.id;
+  if (!provisional) return; // no models available
+
+  // Show the question + a thinking placeholder immediately while we route.
+  if (conv.selectedModels.length !== 1 || conv.selectedModels[0] !== provisional) {
+    useChat.getState().setSelectedModels(convId, [provisional]);
+  }
+  useChat.getState().addUserMessage(convId, prompt, [provisional]);
+  const placeholderId = useChat.getState().startAssistant(convId, provisional, "thinking");
+  // Keep the placeholder responsive to "stop" while routing is in flight.
+  ctrl.signal.addEventListener("abort", () => {
+    const msg = useChat
+      .getState()
+      .conversations[convId]?.threads[provisional]?.messages.find((m) => m.id === placeholderId);
+    if (msg?.pending) useChat.getState().finishAssistant(convId, provisional, placeholderId);
+  });
+
+  const picked = (await pickBestModel(prompt, provisional, ctrl.signal)) || provisional;
+  if (ctrl.signal.aborted) return;
+
+  if (picked === provisional) {
+    streamTargets(convId, prompt, [provisional], ctrl, settings, new Map([[provisional, placeholderId]]));
+    return;
+  }
+
+  // Routed to a different model: clear the provisional placeholder and switch.
+  useChat.getState().finishAssistant(convId, provisional, placeholderId);
+  useChat.getState().setSelectedModels(convId, [picked]);
+  useChat.getState().addUserMessage(convId, prompt, [picked]);
+  streamTargets(convId, prompt, [picked], ctrl, settings);
+}
+
+// Starts assistant placeholders and streams responses for the given targets.
+// The user message must already have been added to each target thread.
+// `existingMsgIds` lets callers reuse a placeholder they already created.
+function streamTargets(
+  convId: string,
+  prompt: string,
+  targets: string[],
+  ctrl: AbortController,
+  settings = useSettings.getState(),
+  existingMsgIds?: Map<string, string>
+) {
+  const state = useChat.getState();
   const assistantMsgIds = new Map<string, string>();
   const modelControllers = new Map<string, AbortController>();
   for (const modelId of targets) {
-    const msgId = state.startAssistant(convId, modelId, settings.webSearch ? "searching" : "thinking");
+    const existing = existingMsgIds?.get(modelId);
+    const msgId = existing ?? state.startAssistant(convId, modelId, settings.webSearch ? "searching" : "thinking");
+    if (existing && settings.webSearch) state.setAssistantStatus(convId, modelId, msgId, "searching");
     const modelCtrl = new AbortController();
     const streamKey = `${convId}:${modelId}`;
     assistantMsgIds.set(modelId, msgId);
@@ -501,5 +696,4 @@ export function sendPromptToAll(
       });
     }
   })();
-  return ctrl;
 }

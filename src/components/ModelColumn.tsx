@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useLayoutEffect } from "react";
 import { useChat, useSettings, type Message } from "@/lib/store";
 import { getModel } from "@/lib/models";
 import { API_PROVIDERS, PROVIDERS } from "@/lib/providers";
@@ -12,15 +12,22 @@ import { streamDraftKey, useStreamDrafts } from "@/lib/stream-drafts";
 
 /** Split out <think>...</think> blocks from raw content. */
 function parseThinking(content: string): { thinking: string; answer: string } {
-  const match = content.match(/^<think>([\s\S]*?)<\/think>\s*/);
-  if (match) {
-    return { thinking: match[1].trim(), answer: content.slice(match[0].length) };
+  const thinkParts: string[] = [];
+  // Remove every complete <think>...</think> block, wherever it appears.
+  let answer = content.replace(/<think>([\s\S]*?)<\/think>/gi, (_, inner) => {
+    thinkParts.push(String(inner).trim());
+    return "";
+  });
+  // Handle a trailing, still-streaming <think> that has no closing tag yet.
+  const openIdx = answer.search(/<think>/i);
+  if (openIdx !== -1) {
+    thinkParts.push(answer.slice(openIdx + "<think>".length).trim());
+    answer = answer.slice(0, openIdx);
   }
-  // Partial: still streaming inside <think>
-  if (content.startsWith("<think>") && !content.includes("</think>")) {
-    return { thinking: content.slice(7).trim(), answer: "" };
-  }
-  return { thinking: "", answer: content };
+  return {
+    thinking: thinkParts.filter(Boolean).join("\n\n").trim(),
+    answer: answer.trim(),
+  };
 }
 
 function ThinkingBlock({ text }: { text: string }) {
@@ -119,6 +126,10 @@ function MessageBubble({
   const showCopy =
     !isUser && !msg.pending && !msg.error && !!msg.content;
   const showMeta = !isUser && !msg.pending && typeof msg.responseTimeMs === "number";
+  // Attribute each answer to the model that actually produced it, so prior
+  // responses keep their original model name after switching models.
+  const metaModel = getModel(msg.modelId ?? modelId);
+  const metaModelLabel = metaModel?.shortLabel ?? metaModel?.label;
   const pendingLabel = msg.status === "searching" ? "searching..." : "thinking...";
   const visibleContent = msg.pending && msg.role === "assistant" ? draftContent ?? msg.content : msg.content;
 
@@ -198,6 +209,7 @@ function MessageBubble({
       )}
       {showMeta && (
         <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] text-[var(--fg-subtle)]">
+          {metaModelLabel && <span className="font-medium text-[var(--fg-muted)]">{metaModelLabel}</span>}
           {typeof msg.responseTimeMs === "number" && (
             <span>{formatDuration(msg.responseTimeMs)}</span>
           )}
@@ -206,6 +218,10 @@ function MessageBubble({
     </div>
   );
 }
+
+// Remembers each column's scroll position so it survives unmount/remount
+// (e.g. opening the model picker overlay or switching the single-chat model).
+const scrollPositions = new Map<string, number>();
 
 export function ModelColumn({
   convId,
@@ -256,6 +272,27 @@ export function ModelColumn({
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const spacerRef = useRef<HTMLDivElement>(null);
   const prevConvId = useRef<string>(convId);
+
+  // Stable key for remembering scroll position. In single chat the column is
+  // remounted when switching models, so key by conversation only to carry the
+  // position across model switches; otherwise key per model column.
+  const scrollKey = conv?.chatMode === "single" ? `single:${convId}` : `${convId}:${modelId}`;
+
+  // Restore the saved scroll position before paint so there is no visible
+  // jump from the top — the column appears already at the right place.
+  useLayoutEffect(() => {
+    const saved = scrollPositions.get(scrollKey);
+    if (saved == null) return;
+    const c = scrollContainerRef.current;
+    if (c) c.scrollTop = saved;
+    // Run once on mount for this key.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleScroll = () => {
+    const c = scrollContainerRef.current;
+    if (c) scrollPositions.set(scrollKey, c.scrollTop);
+  };
 
   // Find the ID of the latest user message
   const latestUserMsg = thread ? [...thread.messages].reverse().find((m) => m.role === "user") : undefined;
@@ -477,7 +514,7 @@ export function ModelColumn({
       </div>
 
       {/* Messages */}
-      <div ref={scrollContainerRef} className={"flex-1 overflow-y-auto " + (compact ? "space-y-2 p-2" : "space-y-3 p-3")}>
+      <div ref={scrollContainerRef} onScroll={handleScroll} className={"flex-1 overflow-y-auto " + (compact ? "space-y-2 p-2" : "space-y-3 p-3")}>
         {thread.messages.length === 0 && (
           <div className="pt-8 text-center text-xs text-[var(--fg-subtle)]">
             Send a prompt to see this model respond.

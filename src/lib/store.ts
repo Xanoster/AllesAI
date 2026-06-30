@@ -106,11 +106,18 @@ export type ModelThread = {
   messages: Message[];
 };
 
+// How a conversation routes prompts to models.
+// - "auto": automatically pick the best single model for the conversation.
+// - "multi": broadcast to several models side-by-side (classic behavior).
+// - "single": chat with one specific user-chosen model.
+export type ChatMode = "auto" | "multi" | "single";
+
 export type Conversation = {
   id: string;
   title: string;
   createdAt: number;
   updatedAt: number;
+  chatMode: ChatMode;
   selectedModels: string[];
   disabledModels?: string[]; // models paused - won't receive new prompts
   focusedModel?: string | null; // when set, only this model receives further prompts
@@ -292,7 +299,7 @@ export function filterEnabledModelIds(
   });
 }
 
-function getEnabledRoutes(settings: SettingsState): ModelInfo[] {
+export function getEnabledRoutes(settings: SettingsState): ModelInfo[] {
   return [
     ...MODEL_CATALOG,
     ...getCustomProviderModelInfos(settings.customProviders),
@@ -366,7 +373,9 @@ type ChatState = {
   clearConversations: () => void;
   importConversations: (conversations: Record<string, Conversation>) => void;
   renameConversation: (id: string, title: string) => void;
+  setChatMode: (id: string, mode: ChatMode) => void;
   setSelectedModels: (id: string, models: string[]) => void;
+  setSingleModel: (id: string, modelId: string) => void;
   removeApiProviderModels: (apiProvider: ApiProviderKey) => void;
   removeOllamaModels: () => void;
   removeLocalOllamaModels: () => void;
@@ -418,7 +427,7 @@ type ChatState = {
   ) => void;
 };
 
-function emptyConversation(selectedModels: string[]): Conversation {
+function emptyConversation(selectedModels: string[], chatMode: ChatMode = "multi"): Conversation {
   const now = Date.now();
   const threads: Record<string, ModelThread> = {};
   for (const m of selectedModels) threads[m] = { modelId: m, messages: [] };
@@ -427,6 +436,7 @@ function emptyConversation(selectedModels: string[]): Conversation {
     title: "New chat",
     createdAt: now,
     updatedAt: now,
+    chatMode,
     selectedModels,
     threads,
     consensusMessages: [],
@@ -529,6 +539,7 @@ function sanitizeConversation(conversation: Conversation): Conversation {
 
   return {
     ...conversation,
+    chatMode: conversation.chatMode === "auto" || conversation.chatMode === "single" ? conversation.chatMode : "multi",
     selectedModels: nextSelectedModels,
     focusedModel: focusedModel && nextSelectedModels.includes(focusedModel) ? focusedModel : null,
     threads,
@@ -574,6 +585,8 @@ export const useChat = create<ChatState>()(
       newConversation: (selectedModels) => {
         // If the active conversation is still blank (no messages), reuse it
         const { conversations, activeId, lastUsedModels } = get();
+        const inheritedMode: ChatMode =
+          (activeId && conversations[activeId]?.chatMode) || "multi";
         if (activeId) {
           const active = conversations[activeId];
           if (active) {
@@ -590,7 +603,10 @@ export const useChat = create<ChatState>()(
             : selectedModels
               ? []
               : filterEnabledModelIds(DEFAULT_SELECTED_MODELS);
-        const c = emptyConversation(models);
+        const c = emptyConversation(
+          inheritedMode === "single" ? models.slice(0, 1) : models,
+          inheritedMode
+        );
         set((s) => ({
           conversations: { ...s.conversations, [c.id]: c },
           activeId: c.id,
@@ -628,6 +644,26 @@ export const useChat = create<ChatState>()(
           if (!c) return s;
           return {
             conversations: { ...s.conversations, [id]: { ...c, title, updatedAt: Date.now() } },
+          };
+        }),
+      setChatMode: (id, mode) =>
+        set((s) => {
+          const c = s.conversations[id];
+          if (!c || c.chatMode === mode) return s;
+          // Single mode keeps just one model; auto/multi keep the current selection.
+          const selectedModels =
+            mode === "single" ? c.selectedModels.slice(0, 1) : c.selectedModels;
+          return {
+            conversations: {
+              ...s.conversations,
+              [id]: {
+                ...c,
+                chatMode: mode,
+                selectedModels,
+                focusedModel: null,
+                updatedAt: Date.now(),
+              },
+            },
           };
         }),
       setSelectedModels: (id, models) =>
@@ -668,6 +704,38 @@ export const useChat = create<ChatState>()(
             conversations: {
               ...s.conversations,
               [id]: { ...c, selectedModels: nextModels, threads, focusedModel, updatedAt: Date.now() },
+            },
+          };
+        }),
+      // Switch the single active model while carrying the conversation history
+      // forward, so the new model continues the same chat with full context.
+      setSingleModel: (id, modelId) =>
+        set((s) => {
+          const c = s.conversations[id];
+          if (!c) return s;
+          const normalized = normalizeModelId(modelId);
+          if (!normalized) return s;
+          const prevId = c.selectedModels[0];
+          if (prevId === normalized) return s;
+          const prevThread = prevId ? c.threads[prevId] : undefined;
+          const carried = (prevThread?.messages ?? [])
+            .filter((m) => !(m.role === "assistant" && m.pending))
+            .map((m) => ({ ...m }));
+          const threads = {
+            ...c.threads,
+            [normalized]: { modelId: normalized, messages: carried },
+          };
+          return {
+            lastUsedModels: [normalized],
+            conversations: {
+              ...s.conversations,
+              [id]: {
+                ...c,
+                selectedModels: [normalized],
+                focusedModel: null,
+                threads,
+                updatedAt: Date.now(),
+              },
             },
           };
         }),
@@ -1042,7 +1110,7 @@ export const useChat = create<ChatState>()(
     }),
     {
       name: "alles-ai-chats",
-      version: 20,
+      version: 21,
       migrate: (persistedState) => {
         const state = persistedState as Partial<ChatState> | undefined;
         const conversations = Object.fromEntries(
