@@ -89,7 +89,7 @@ export function HeroComposer({ convId }: { convId: string }) {
 
   return (
     <div className="relative flex flex-1 items-center justify-center overflow-hidden">
-      <div className="hero-grid pointer-events-none absolute inset-0 opacity-40" />
+      <div className="hero-grid pointer-events-none absolute inset-0 opacity-60" />
 
       <div className="relative z-10 flex w-full max-w-[119.7rem] flex-col items-center px-6">
         <div className="mb-8 w-full max-w-2xl text-center">

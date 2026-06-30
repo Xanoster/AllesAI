@@ -91,5 +91,6 @@ html, body {
     linear-gradient(90deg, var(--border) 1px, transparent 1px);
   background-size: 32px 32px;
   background-position: -1px -1px;
-  mask-image: radial-gradient(ellipse at center, rgba(0,0,0,0.7) 0%, transparent 70%);
+  -webkit-mask-image: radial-gradient(ellipse 60% 50% at 50% 45%, black 30%, transparent 65%);
+  mask-image: radial-gradient(ellipse 60% 50% at 50% 45%, black 30%, transparent 65%);
 }
